@@ -1,16 +1,28 @@
 # Dependencies
 node_modules/
+**/node_modules/
 dist/
+**/dist/
 build/
+**/build/
 .next/
 out/
 
 # Environment Variables
 .env
+**/.env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+*.log
+**/*.log
 
 # Python
 __pycache__/
@@ -29,7 +41,6 @@ pip-delete-this-directory.txt
 nosetests.xml
 coverage.xml
 *.cover
-*.log
 .mypy_cache/
 .pytest_cache/
 
@@ -40,6 +51,7 @@ coverage.xml
 **/*.json
 **/*.txt
 !package.json
+!package-lock.json
 !manifest.json
 !blog_agent_service/requirements.txt
 
@@ -49,5 +61,12 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+*.swo
 *.bak
 *.tmp
+.project
+.classpath
+.settings/
+
+# Testing
+coverage/
