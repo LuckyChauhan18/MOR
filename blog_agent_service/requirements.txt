@@ -1,0 +1,22 @@
+# Core LLM stack
+langchain>=0.2.0
+langchain-openai>=0.1.7
+langgraph>=0.0.40
+
+# LLM provider
+openai>=1.12.0
+
+# Data validation & schemas
+pydantic>=2.6.0
+
+# Frontend (optional but recommended)
+streamlit>=1.32.0
+
+# Environment variable management
+python-dotenv>=1.0.1
+
+# Utilities
+requests>=2.31.0
+tqdm>=4.66.0
+
+google-genai>=0.1.0

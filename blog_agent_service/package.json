@@ -1,0 +1,15 @@
+{
+  "name": "blog-agent-service",
+  "version": "1.0.0",
+  "description": "Service for generating and uploading blogs automatically",
+  "main": "modular_frontend.py",
+  "scripts": {
+    "start": "python modular_frontend.py",
+    "upload": "python uploader.py",
+    "automate-push": "python agent_push.py",
+    "test": "python verify_modular_agent.py"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {}
+}
