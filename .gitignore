@@ -54,6 +54,7 @@ coverage.xml
 !package-lock.json
 !manifest.json
 !blog_agent_service/requirements.txt
+!blog_agent_service/requirements.docker.txt
 
 # System Files
 .DS_Store
