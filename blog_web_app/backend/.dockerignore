@@ -1,0 +1,8 @@
+node_modules
+.env
+npm-debug.log
+data/*.txt
+data/*.json
+temp_*
+query_*
+scripts/__pycache__

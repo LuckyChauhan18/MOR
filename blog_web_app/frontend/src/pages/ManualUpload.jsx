@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import Cookies from 'js-cookie';
-import { ArrowLeft, Send, Image as ImageIcon, Plus, X } from 'lucide-react';
+import { ArrowLeft, Send, Image as ImageIcon, Plus, X, Upload } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const ManualUpload = () => {
@@ -58,6 +58,27 @@ const ManualUpload = () => {
     Cookies.remove('username');
     Cookies.remove('userRole');
     navigate('/login');
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.type !== 'text/plain' && !file.name.endsWith('.txt')) {
+      setMessage({ type: 'error', text: 'Please upload a valid .txt file.' });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setContent(event.target.result);
+      setMessage({ type: 'success', text: 'Content loaded from file successfully!' });
+    };
+    reader.onerror = () => {
+      setMessage({ type: 'error', text: 'Failed to read file.' });
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   return (
@@ -138,7 +159,32 @@ const ManualUpload = () => {
           </div>
 
           <div style={{ marginBottom: '40px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-muted)' }}>Content (Markdown Supported)</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <label style={{ display: 'block', color: 'var(--text-muted)' }}>Content (Markdown Supported)</label>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  color: 'var(--primary)',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  padding: '4px 10px',
+                  background: 'rgba(139, 92, 246, 0.1)',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(139, 92, 246, 0.2)'
+                }}
+              >
+                <Upload size={14} /> Load from .txt
+                <input
+                  type="file"
+                  accept=".txt"
+                  onChange={handleFileUpload}
+                  style={{ display: 'none' }}
+                />
+              </label>
+            </div>
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}

@@ -184,6 +184,66 @@ const dislikeBlog = async (req, res) => {
   }
 };
 
+const deleteBlog = async (req, res) => {
+  try {
+    const blog = await Blog.findById(req.params.id);
+
+    if (!blog) {
+      return res.status(404).json({ message: 'Blog not found' });
+    }
+
+    // Check if user is admin OR the author of the blog
+    if (req.user.role !== 'admin' && blog.author !== req.user.username) {
+      return res.status(403).json({ message: 'Not authorized to delete this blog' });
+    }
+
+    await Blog.deleteOne({ _id: req.params.id });
+    res.json({ message: 'Blog removed successfully' });
+  } catch (error) {
+    console.error('Delete Blog Error:', error);
+    res.status(500).json({ message: 'Server Error', details: error.message });
+  }
+};
+
+const getUserActivity = async (req, res) => {
+  try {
+    const username = req.user.username;
+    const userId = req.user._id;
+
+    // Fetch user's own posts
+    const ownPosts = await Blog.find({ author: username }).sort({ createdAt: -1 });
+
+    // Fetch liked posts
+    const likedPosts = await Blog.find({ likes: userId }).sort({ createdAt: -1 });
+
+    // Fetch disliked posts
+    const dislikedPosts = await Blog.find({ dislikes: userId }).sort({ createdAt: -1 });
+
+    // Fetch blogs where user has commented
+    const blogsWithUserComments = await Blog.find({
+      'comments.user': userId
+    }).sort({ updatedAt: -1 });
+
+    const userComments = blogsWithUserComments.map(blog => ({
+      _id: blog._id,
+      blogTitle: blog.title,
+      blogSlug: blog.slug,
+      comments: blog.comments
+        .filter(c => c.user.toString() === userId.toString())
+        .map(c => ({
+          _id: c._id,
+          text: c.text,
+          date: c.date
+        }))
+    }));
+
+    res.json({ ownPosts, likedPosts, dislikedPosts, userComments });
+  } catch (error) {
+    console.error('Get User Activity Error:', error);
+    res.status(500).json({ message: 'Server Error', details: error.message });
+  }
+};
+
 const addComment = async (req, res) => {
   try {
     const { text } = req.body;
@@ -364,5 +424,7 @@ module.exports = {
   likeBlog,
   dislikeBlog,
   addComment,
-  askQuestion
+  deleteBlog,
+  askQuestion,
+  getUserActivity
 };

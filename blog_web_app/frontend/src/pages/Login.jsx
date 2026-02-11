@@ -37,7 +37,7 @@ const Login = () => {
   };
 
   return (
-    <div className="login-container" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+    <div className="login-container" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '120px 20px 40px 20px' }}>
       <motion.div
         className="glass"
         style={{ width: '100%', maxWidth: '450px', padding: '50px' }}

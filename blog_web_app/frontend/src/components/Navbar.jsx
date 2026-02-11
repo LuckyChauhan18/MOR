@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Cookies from 'js-cookie';
 import { motion } from 'framer-motion';
-import { LogOut, LayoutDashboard } from 'lucide-react';
+import { LogOut, LayoutDashboard, User } from 'lucide-react';
 import logo from '../assets/websiteLogo.png';
 
 const Navbar = () => {
@@ -43,7 +43,7 @@ const Navbar = () => {
       left: 0,
       right: 0,
       zIndex: 1000,
-      padding: '10px 40px',
+      padding: '5px 40px',
       background: 'rgba(10, 10, 18, 0.7)',
       backdropFilter: 'blur(20px)',
       borderBottom: '1px solid var(--glass-border)',
@@ -81,9 +81,12 @@ const Navbar = () => {
           <>
             {user.role === 'admin' && (
               <Link to="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'white', fontSize: '0.9rem', padding: '8px 15px', borderRadius: '10px', background: 'var(--glass)', textDecoration: 'none' }}>
-                <LayoutDashboard size={18} /> Dashboard
+                <LayoutDashboard size={18} /> Admin Panel
               </Link>
             )}
+            <Link to="/profile" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'white', fontSize: '0.9rem', padding: '8px 15px', borderRadius: '10px', background: 'var(--glass)', textDecoration: 'none' }}>
+              <User size={18} /> My Profile
+            </Link>
             <button
               onClick={() => navigate('/upload')}
               className="vibrant-gradient"

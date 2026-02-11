@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Cookies from 'js-cookie';
-import { LayoutDashboard, FileText, Send, Plus, ExternalLink, RefreshCw, LogOut, ThumbsUp, ThumbsDown, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, FileText, Send, Plus, ExternalLink, RefreshCw, LogOut, ThumbsUp, ThumbsDown, MessageSquare, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const Dashboard = () => {
@@ -102,6 +102,22 @@ const Dashboard = () => {
     navigate('/login');
   };
 
+  const handleDelete = async (id, title) => {
+    if (!window.confirm(`Are you sure you want to delete "${title}"?`)) return;
+
+    try {
+      const token = Cookies.get('userToken');
+      await axios.delete(`/api/blogs/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setMessage(`"${title}" deleted successfully.`);
+      fetchStats(); // Refresh the list
+    } catch (err) {
+      console.error('Delete error:', err);
+      alert('Failed to delete blog.');
+    }
+  };
+
   if (loading) return <div className="container" style={{ paddingTop: '100px' }}>Loading...</div>;
 
   return (
@@ -141,7 +157,16 @@ const Dashboard = () => {
             <div style={{ maxHeight: '200px', overflowY: 'auto', pr: '10px' }}>
               {stats.detailedStats && stats.detailedStats.map(blog => (
                 <div key={blog.id} style={{ padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', marginBottom: '10px', border: '1px solid var(--glass-border)' }}>
-                  <p style={{ fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{blog.title}</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                    <p style={{ fontSize: '0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{blog.title}</p>
+                    <button
+                      onClick={() => handleDelete(blog.id, blog.title)}
+                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 0 0 10px', opacity: 0.6 }}
+                      title="Delete Blog"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                   <div style={{ display: 'flex', gap: '15px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ThumbsUp size={12} className="primary-text" /> {blog.likes}</span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ThumbsDown size={12} style={{ color: '#ef4444' }} /> {blog.dislikes}</span>
