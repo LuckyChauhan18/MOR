@@ -52,9 +52,9 @@ const Navbar = () => {
       alignItems: 'center'
     }}>
       {/* Brand / Logo */}
-      <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '15px', textDecoration: 'none' }}>
-        <img src={logo} alt="Mor Logo" style={{ height: '70px', width: '70px', borderRadius: '50%', objectFit: 'cover' }} />
-        <span className="text-gradient" style={{ fontWeight: 'bold', fontSize: '1.8rem' }}>Mor</span>
+      <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '20px', textDecoration: 'none' }}>
+        <img src={logo} alt="Mor Logo" style={{ height: '100px', width: '100px', borderRadius: '50%', objectFit: 'cover' }} />
+        <span className="text-gradient" style={{ fontWeight: 'bold', fontSize: '2.5rem' }}>Mor</span>
       </Link>
 
       {/* Animated Welcome Message */}

@@ -11,7 +11,13 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
   const [message, setMessage] = useState('');
+  const [selectedTopic, setSelectedTopic] = useState('AI');
   const navigate = useNavigate();
+
+  const topics = [
+    'AI', 'Sport', 'Current Affairs', 'Politics', 'Geography',
+    'Economic', 'Space', 'Geopolitics', 'Indian Politics', 'Software Industries'
+  ];
 
   useEffect(() => {
     const token = Cookies.get('userToken');
@@ -76,7 +82,7 @@ const Dashboard = () => {
     setMessage('');
     try {
       const token = Cookies.get('userToken');
-      const res = await axios.post('/api/blogs/trigger-agent', {}, {
+      const res = await axios.post('/api/blogs/trigger-agent', { topic: selectedTopic }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMessage(res.data.message);
@@ -189,6 +195,25 @@ const Dashboard = () => {
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                 <Send size={20} style={{ color: 'var(--secondary)' }} /> AI Agent Trigger
               </h3>
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Select Topic:</label>
+                <select
+                  value={selectedTopic}
+                  onChange={(e) => setSelectedTopic(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    background: 'var(--glass)',
+                    border: '1px solid var(--glass-border)',
+                    color: 'white',
+                    borderRadius: '8px',
+                    fontSize: '0.9rem',
+                    outline: 'none'
+                  }}
+                >
+                  {topics.map(t => <option key={t} value={t} style={{ background: '#121212' }}>{t}</option>)}
+                </select>
+              </div>
               {agentStatus.topic ? (
                 <p style={{ fontSize: '0.9rem', color: 'var(--text)', fontWeight: 'bold', background: 'rgba(255,255,255,0.05)', padding: '5px 10px', borderRadius: '8px', borderLeft: '3px solid var(--secondary)' }}>
                   Topic: {agentStatus.topic}

@@ -56,12 +56,12 @@ def generate_and_push(topic):
     existing_titles = fetch_existing_titles()
     original_topic = topic.strip().lower()
     
-    # Trigger exploration if topic is duplicate or generic
-    if original_topic in existing_titles or "trending" in original_topic or not topic:
-        print("🔍 Discovering new trending topics via Explorer Agent...")
+    # Always trigger exploration if a broad field/topic is provided
+    if topic:
+        print(f"🔍 Discovering fresh trending sub-topics for field: {topic}...")
         report_status("running", "Explorer")
         try:
-            explorer_results = run_explorer_agent()
+            explorer_results = run_explorer_agent(topic)
             if explorer_results and explorer_results.topics:
                 # Filter out topics that already exist
                 new_topics = [t for t in explorer_results.topics if t.title.strip().lower() not in existing_titles]

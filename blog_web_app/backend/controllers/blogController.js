@@ -15,7 +15,7 @@ let currentAgentStatus = {
 // @access  Public
 const getBlogs = async (req, res) => {
   try {
-    const blogs = await Blog.find().sort({ date: -1 });
+    const blogs = await Blog.find().sort({ createdAt: -1 });
     console.log('Blogs fetched:', blogs.length);
     res.json(blogs);
   } catch (error) {
@@ -218,11 +218,14 @@ const triggerAgentBlog = async (req, res) => {
     return res.status(500).json({ message: 'Agent script path not configured' });
   }
 
-  // Use conda run to execute in the specific environment
-  // We'll run it in the background if possible, but for now we'll wait for start
-  const command = `conda run -n ${condaEnv} python "${scriptPath}"`;
+  const { topic } = req.body;
 
-  console.log(`🚀 Triggering Agent: ${command}`);
+  // Use conda run to execute in the specific environment
+  // Pass the topic as a quoted argument to the script
+  const command = `conda run -n ${condaEnv} python "${scriptPath}" "${topic || 'Trending AI News'}"`;
+
+  console.log(`🚀 Triggering Agent for topic: ${topic || 'Trending AI News'}`);
+  console.log(`Command: ${command}`);
 
   exec(command, (error, stdout, stderr) => {
     if (error) {
