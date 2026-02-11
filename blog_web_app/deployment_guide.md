@@ -11,15 +11,15 @@ This guide covers how to move your application from your local machine to produc
 2.  **Database**: Continue using your MongoDB Atlas URI.
 3.  **Create Render Web Services**:
     - **Backend Service**:
-        - Root: `backend/`
-        - Runtime: `Node`
-        - Build: `npm install`
-        - Start: `npm start`
+        - **Name**: `mor-backend`
+        - **Root Directory**: (Leave blank)
+        - **Build Context**: `blog_web_app/backend`
+        - **Dockerfile Path**: `blog_web_app/backend/Dockerfile`
     - **Agent Service**:
-        - Root: `blog_agent_service/`
-        - Runtime: `Python` (Python 3.11)
-        - Build: `pip install -r requirements.docker.txt`
-        - Start: `uvicorn agent_api:app --host 0.0.0.0 --port 10000`
+        - **Name**: `mor-agent`
+        - **Root Directory**: (Leave blank)
+        - **Build Context**: `blog_agent_service`
+        - **Dockerfile Path**: `blog_agent_service/Dockerfile`
 
 ### 2. Frontend (Vercel)
 1.  **Connect Repo**: Import your repo into Vercel.
