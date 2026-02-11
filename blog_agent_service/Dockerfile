@@ -23,8 +23,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code
 COPY . .
 
-# Expose API port
+# Expose API port (Render uses $PORT, default to 8000)
 EXPOSE 8000
 
-# Start command
-CMD ["uvicorn", "agent_api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Start command using sh to allow environment variable expansion
+CMD ["sh", "-c", "uvicorn agent_api:app --host 0.0.0.0 --port ${PORT:-8000}"]
