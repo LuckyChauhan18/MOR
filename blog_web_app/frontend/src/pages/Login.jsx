@@ -22,6 +22,7 @@ const Login = () => {
       // Store session in cookies
       Cookies.set('userToken', data.token, { expires: 30 });
       Cookies.set('username', data.username, { expires: 30 });
+      Cookies.set('userId', data._id, { expires: 30 });
       Cookies.set('userRole', data.role, { expires: 30 });
 
       if (data.role === 'admin') {

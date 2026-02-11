@@ -12,31 +12,30 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 def get_embeddings():
     return OpenAIEmbeddings(
+        model="openai/text-embedding-3-small",
         openai_api_key=os.getenv("OPENROUTER_API_KEY"),
         openai_api_base="https://openrouter.ai/api/v1"
     )
 
 def get_llm():
     return ChatOpenAI(
-        model="gpt-4o-mini",
+        model="openai/gpt-4o-mini",
         openai_api_key=os.getenv("OPENROUTER_API_KEY"),
         openai_api_base="https://openrouter.ai/api/v1",
         temperature=0
     )
 
 def index_blog(text):
-    print(f"DEBUG: Starting index_blog with {len(text)} chars", file=sys.stderr, flush=True)
+    if not text.strip():
+        return []
     splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=150)
     chunks = splitter.split_text(text)
-    print(f"DEBUG: Split into {len(chunks)} chunks", file=sys.stderr, flush=True)
     
     if not chunks:
         return []
 
     embeddings_model = get_embeddings()
-    sys.stderr.write("DEBUG: Generating embeddings...\n")
     embeddings = embeddings_model.embed_documents(chunks)
-    sys.stderr.write(f"DEBUG: Generated {len(embeddings)} embeddings\n")
     
     rag_data = []
     for i, chunk in enumerate(chunks):
@@ -47,30 +46,34 @@ def index_blog(text):
     return rag_data
 
 def query_blog(rag_data, question):
+    if not rag_data:
+        return "No information available for this blog."
+        
     embeddings_model = get_embeddings()
     query_vector = embeddings_model.embed_query(question)
     
     # Simple cosine similarity search
     results = []
     for item in rag_data:
-        # Assuming embedding is a list of numbers
         doc_vector = np.array(item['embedding'])
         q_vector = np.array(query_vector)
         similarity = np.dot(doc_vector, q_vector) / (np.linalg.norm(doc_vector) * np.linalg.norm(q_vector))
         results.append((item['text'], similarity))
     
-    # Sort by similarity and take top 4
+    # Sort by similarity and take top 8 (Increased from 4)
     results.sort(key=lambda x: x[1], reverse=True)
-    context = "\n\n".join([r[0] for r in results[:4]])
+    top_chunks = results[:8]
+    context = "\n\n".join([r[0] for r in top_chunks])
     
     llm = get_llm()
     RAG_SYSTEM = """
-    You are a document-grounded assistant.
+    You are a helpful assistant that answers questions based on the provided blog content.
     
-    RULES:
-    - Answer ONLY from the provided blog context.
-    - If answer is not present, reply: "Not found in the provided blog."
-    - Do NOT use external knowledge.
+    INSTRUCTIONS:
+    - Use the provided context to answer the question accurately.
+    - If the answer is not explicitly stated but can be inferred from the context, provide the inference clearly.
+    - Only if there is absolutely no relevant information, say: "Not found in the provided blog."
+    - Keep responses concise and professional.
     """
     
     response = llm.invoke([

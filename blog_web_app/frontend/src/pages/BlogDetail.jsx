@@ -132,21 +132,54 @@ const BlogDetail = () => {
         <ReactMarkdown>{blog.content}</ReactMarkdown>
       </article>
 
-      {/* Engagement Bar */}
-      <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '60px', padding: '20px', background: 'var(--glass)', borderRadius: '16px', border: '1px solid var(--glass-border)' }}>
-        <button
-          onClick={() => handleEngagement('like')}
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', color: blog.likes?.includes(Cookies.get('userId')) ? 'var(--primary)' : 'white', cursor: 'pointer', fontSize: '1.1rem' }}
-        >
-          <ThumbsUp size={24} /> {blog.likes?.length || 0}
-        </button>
-        <button
-          onClick={() => handleEngagement('dislike')}
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', color: blog.dislikes?.includes(Cookies.get('userId')) ? '#ef4444' : 'white', cursor: 'pointer', fontSize: '1.1rem' }}
-        >
-          <ThumbsDown size={24} /> {blog.dislikes?.length || 0}
-        </button>
-        <div style={{ marginLeft: 'auto', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '60px', padding: '20px', background: 'var(--glass)', borderRadius: '20px', border: '1px solid var(--glass-border)', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: '25px' }}>
+          <motion.button
+            onClick={() => handleEngagement('like')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              background: blog.likes?.includes(Cookies.get('userId')) ? 'rgba(139, 92, 246, 0.2)' : 'none',
+              border: blog.likes?.includes(Cookies.get('userId')) ? '1px solid var(--primary)' : '1px solid transparent',
+              color: blog.likes?.includes(Cookies.get('userId')) ? 'var(--primary)' : 'white',
+              cursor: 'pointer',
+              fontSize: '1.2rem',
+              padding: '10px 20px',
+              borderRadius: '12px',
+              transition: 'all 0.3s ease'
+            }}
+            whileHover={{ scale: 1.05, background: 'rgba(139, 92, 246, 0.1)' }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <ThumbsUp size={24} fill={blog.likes?.includes(Cookies.get('userId')) ? 'var(--primary)' : 'none'} />
+            <span style={{ fontWeight: '600' }}>{blog.likes?.length || 0}</span>
+          </motion.button>
+
+          <motion.button
+            onClick={() => handleEngagement('dislike')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              background: blog.dislikes?.includes(Cookies.get('userId')) ? 'rgba(239, 68, 68, 0.1)' : 'none',
+              border: blog.dislikes?.includes(Cookies.get('userId')) ? '1px solid #ef4444' : '1px solid transparent',
+              color: blog.dislikes?.includes(Cookies.get('userId')) ? '#ef4444' : 'white',
+              cursor: 'pointer',
+              fontSize: '1.2rem',
+              padding: '10px 20px',
+              borderRadius: '12px',
+              transition: 'all 0.3s ease'
+            }}
+            whileHover={{ scale: 1.05, background: 'rgba(239, 68, 68, 0.05)' }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <ThumbsDown size={24} fill={blog.dislikes?.includes(Cookies.get('userId')) ? '#ef4444' : 'none'} />
+            <span style={{ fontWeight: '600' }}>{blog.dislikes?.length || 0}</span>
+          </motion.button>
+        </div>
+
+        <div style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1rem', fontWeight: '500' }}>
           <MessageSquare size={20} /> {blog.comments?.length || 0} Comments
         </div>
       </div>
