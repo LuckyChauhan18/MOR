@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../utils/api';
 import Cookies from 'js-cookie';
 import { User, FileText, ThumbsUp, ThumbsDown, MessageSquare, Trash2, Calendar, ArrowRight, LogOut, LayoutDashboard, Home } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -31,10 +31,7 @@ const UserDashboard = () => {
 
   const fetchActivity = async () => {
     try {
-      const token = Cookies.get('userToken');
-      const res = await axios.get('/api/blogs/user-activity', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/blogs/user-activity');
       setActivity(res.data);
       setLoading(false);
     } catch (err) {
@@ -47,10 +44,7 @@ const UserDashboard = () => {
     if (!window.confirm(`Are you sure you want to delete "${title}"?`)) return;
 
     try {
-      const token = Cookies.get('userToken');
-      await axios.delete(`/api/blogs/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete(`/blogs/${id}`);
       setMessage(`"${title}" deleted successfully.`);
       fetchActivity(); // Refresh
     } catch (err) {

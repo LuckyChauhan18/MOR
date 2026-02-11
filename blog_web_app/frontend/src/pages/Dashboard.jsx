@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../utils/api';
 import Cookies from 'js-cookie';
 import { LayoutDashboard, FileText, Send, Plus, ExternalLink, RefreshCw, LogOut, ThumbsUp, ThumbsDown, MessageSquare, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -49,10 +49,7 @@ const Dashboard = () => {
 
   const fetchStats = async () => {
     try {
-      const token = Cookies.get('userToken');
-      const res = await axios.get('/api/blogs/dashboard-stats', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/blogs/dashboard-stats');
       setStats(res.data);
       setLoading(false);
     } catch (err) {
@@ -63,14 +60,11 @@ const Dashboard = () => {
 
   const fetchAgentStatus = async () => {
     try {
-      const token = Cookies.get('userToken');
-      const res = await axios.get('/api/blogs/agent-status', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/blogs/agent-status');
       setAgentStatus(res.data);
       if (res.data.status === 'idle' && triggering) {
         setTriggering(false);
-        fetchStats(); // Update blog count if it just finished
+        fetchStats();
       }
     } catch (err) {
       console.error('Status fetch error:', err);
@@ -81,13 +75,8 @@ const Dashboard = () => {
     setTriggering(true);
     setMessage('');
     try {
-      const token = Cookies.get('userToken');
-      const res = await axios.post('/api/blogs/trigger-agent', { topic: selectedTopic }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.post('/blogs/trigger-agent', { topic: selectedTopic });
       setMessage(res.data.message);
-      // Don't set triggering to false immediately if we want to show it's "running"
-      // but the API returns 202 Accepted, so we know it started.
       setTriggering(false);
     } catch (err) {
       setMessage('Failed to trigger agent.');

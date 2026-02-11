@@ -268,38 +268,20 @@ const addComment = async (req, res) => {
 };
 
 const triggerAgentBlog = async (req, res) => {
-  const { exec } = require('child_process');
-  const path = require('path');
-
-  const scriptPath = process.env.AGENT_PUSH_SCRIPT;
-  const condaEnv = process.env.CONDA_ENV_NAME;
-
-  if (!scriptPath) {
-    return res.status(500).json({ message: 'Agent script path not configured' });
-  }
-
+  const axios = require('axios');
   const { topic } = req.body;
-
-  // Use conda run to execute in the specific environment
-  // Pass the topic as a quoted argument to the script
-  const command = `conda run -n ${condaEnv} python "${scriptPath}" "${topic || 'Trending AI News'}"`;
+  const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://agent-service:8000';
 
   console.log(`🚀 Triggering Agent for topic: ${topic || 'Trending AI News'}`);
-  console.log(`Command: ${command}`);
 
-  exec(command, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`❌ Agent Trigger Error: ${error.message}`);
-      return;
-    }
-    if (stderr) {
-      console.error(`⚠️ Agent Stderr: ${stderr}`);
-      return;
-    }
-    console.log(`✅ Agent Output: ${stdout}`);
-  });
-
-  res.status(202).json({ message: 'Agent triggered successfully. It may take a few minutes to publish.' });
+  try {
+    // Send background request to agent service
+    axios.post(`${AGENT_SERVICE_URL}/generate`, { topic: topic || 'Trending AI News' });
+    res.status(202).json({ message: 'Agent triggered successfully tokens. It may take a few minutes to publish.' });
+  } catch (error) {
+    console.error(`❌ Agent Trigger Error: ${error.message}`);
+    res.status(500).json({ message: 'Failed to trigger agent microservice' });
+  }
 };
 
 const updateAgentStatus = async (req, res) => {
@@ -328,48 +310,26 @@ const getAgentStatus = async (req, res) => {
   res.json(currentAgentStatus);
 };
 
-const triggerRAGIndexing = (blogId, text) => {
-  const { spawn } = require('child_process');
-  const path = require('path');
-  const fs = require('fs');
+const triggerRAGIndexing = async (blogId, text) => {
+  const axios = require('axios');
+  const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://agent-service:8000';
 
-  const pythonScript = path.join(__dirname, '..', 'scripts', 'rag_service.py');
-  const condaEnv = process.env.CONDA_ENV_NAME || 'blogGenration';
+  console.log(`🧠 Requesting RAG indexing for blog ${blogId} from microservice...`);
 
-  console.log(`🧠 Indexing blog ${blogId} for RAG...`);
-
-  const tempFile = path.join(__dirname, '..', 'data', `temp_${blogId}.txt`);
-  fs.writeFileSync(tempFile, text);
-  const command = `conda run -n ${condaEnv} python ${pythonScript} index --file ${tempFile}`;
-  console.log(`Command: ${command}`);
-
-  const py = spawn('conda', ['run', '-n', condaEnv, 'python', pythonScript, 'index', '--file', tempFile], { shell: true });
-
-  let result = '';
-  py.stdout.on('data', (data) => { result += data.toString(); });
-  py.stderr.on('data', (data) => { console.error(`PY DEBUG INDEX: ${data}`); });
-
-  py.on('error', (err) => {
-    console.error('Failed to spawn indexing process:', err);
-    if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-  });
-
-  py.on('close', async (code) => {
-    if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-    if (code === 0) {
-      try {
-        const ragData = JSON.parse(result);
-        await Blog.findByIdAndUpdate(blogId, { ragData });
-        console.log(`✅ Blog ${blogId} indexed successfully.`);
-      } catch (err) {
-        console.error('Failed to parse RAG indexing result:', err);
-      }
+  try {
+    const { data } = await axios.post(`${AGENT_SERVICE_URL}/index`, { blog_id: blogId, text });
+    if (data.rag_data) {
+      await Blog.findByIdAndUpdate(blogId, { ragData: data.rag_data });
+      console.log(`✅ Blog ${blogId} indexed successfully via microservice.`);
     }
-  });
+  } catch (err) {
+    console.error('Failed to index blog via microservice:', err.message);
+  }
 };
 
 const askQuestion = async (req, res) => {
   try {
+    const axios = require('axios');
     const blog = await Blog.findById(req.params.id);
     if (!blog) return res.status(404).json({ message: 'Blog not found' });
     if (!blog.ragData || blog.ragData.length === 0) {
@@ -377,38 +337,19 @@ const askQuestion = async (req, res) => {
     }
 
     const { question } = req.body;
-    const pythonScript = path.join(__dirname, '..', 'scripts', 'rag_service.py');
-    const condaEnv = process.env.CONDA_ENV_NAME || 'blogGenration';
+    const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://agent-service:8000';
 
-    const fs = require('fs');
-    const tempFile = path.join(__dirname, '..', 'data', `query_${req.params.id}.json`);
-    fs.writeFileSync(tempFile, JSON.stringify({ rag_data: blog.ragData, question }));
+    console.log(`🤖 Requesting AI Answer for blog ${req.params.id} from microservice...`);
 
-    const py = spawn('conda', ['run', '-n', condaEnv, 'python', pythonScript, 'query', '--file', tempFile], { shell: true });
-
-    console.log(`🤖 AI Query started for blog ${req.params.id}`);
-    console.log(`Command: conda run -n ${condaEnv} python ${pythonScript} query --file ${tempFile}`);
-
-    py.on('error', (err) => {
-      console.error('Failed to spawn query process:', err);
-      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-      if (!res.headersSent) res.status(500).json({ message: 'AI failed to start' });
+    const { data } = await axios.post(`${AGENT_SERVICE_URL}/query`, {
+      rag_data: blog.ragData,
+      question
     });
 
-    let answer = '';
-    py.stdout.on('data', (data) => { answer += data.toString(); });
-    py.stderr.on('data', (data) => { console.error(`RAG Query stderr: ${data}`); });
-
-    py.on('close', (code) => {
-      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-      if (code === 0) {
-        res.json({ answer: answer.trim() });
-      } else {
-        res.status(500).json({ message: 'AI failed to answer question' });
-      }
-    });
+    res.json({ answer: data.answer });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('AI Query Error:', error.message);
+    res.status(500).json({ message: 'AI failed to answer question via microservice' });
   }
 };
 

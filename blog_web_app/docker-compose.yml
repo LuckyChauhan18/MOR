@@ -23,6 +23,17 @@ services:
     networks:
       - blog_network
 
+  agent-service:
+    build: ../blog_agent_service
+    container_name: mern_blog_agent
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../blog_agent_service/.env
+    networks:
+      - blog_network
+
 networks:
   blog_network:
     driver: bridge

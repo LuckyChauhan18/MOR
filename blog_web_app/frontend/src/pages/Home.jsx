@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../utils/api';
 import { Link, useNavigate } from 'react-router-dom';
 import Cookies from 'js-cookie';
 import { motion } from 'framer-motion';
@@ -22,7 +22,7 @@ const Home = () => {
 
     const fetchBlogs = async () => {
       try {
-        const { data } = await axios.get('/api/blogs');
+        const { data } = await api.get('/blogs');
         setBlogs(data);
 
         // Extract unique categories safely

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../utils/api';
 import ReactMarkdown from 'react-markdown';
 import { Calendar, User, ArrowLeft, Tag, ThumbsUp, ThumbsDown, MessageSquare, Send, Bot, X, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -27,7 +27,7 @@ const BlogDetail = () => {
 
   const fetchBlog = async () => {
     try {
-      const { data } = await axios.get(`/api/blogs/${slug}`);
+      const { data } = await api.get(`/blogs/${slug}`);
       setBlog(data);
       setLoading(false);
     } catch (err) {
@@ -62,10 +62,7 @@ const BlogDetail = () => {
       return;
     }
     try {
-      const token = Cookies.get('userToken');
-      const { data } = await axios.post(`/api/blogs/${blog._id}/${type}`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const { data } = await api.post(`/blogs/${blog._id}/${type}`);
       setBlog(data);
     } catch (err) {
       console.error(err);
@@ -77,10 +74,7 @@ const BlogDetail = () => {
     if (!commentText.trim()) return;
     setSubmitting(true);
     try {
-      const token = Cookies.get('userToken');
-      const { data } = await axios.post(`/api/blogs/${blog._id}/comment`, { text: commentText }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const { data } = await api.post(`/blogs/${blog._id}/comment`, { text: commentText });
       setBlog(data);
       setCommentText('');
     } catch (err) {
@@ -100,7 +94,7 @@ const BlogDetail = () => {
     setChatLoading(true);
 
     try {
-      const { data } = await axios.post(`/api/blogs/${blog._id}/ask`, { question });
+      const { data } = await api.post(`/blogs/${blog._id}/ask`, { question });
       const aiMsg = { role: 'ai', text: data.answer };
       setChatHistory(prev => [...prev, aiMsg]);
     } catch (err) {

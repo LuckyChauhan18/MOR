@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../utils/api';
 import Cookies from 'js-cookie';
 import { Lock, User, ArrowLeft, LogIn } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -17,7 +17,7 @@ const Login = () => {
     setLoading(true);
     setError('');
     try {
-      const { data } = await axios.post('/api/auth/login', { username, password });
+      const { data } = await api.post('/auth/login', { username, password });
 
       // Store session in cookies
       Cookies.set('userToken', data.token, { expires: 30 });

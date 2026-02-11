@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../utils/api';
 import { Lock, User, Mail, ArrowLeft, UserPlus } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -17,7 +17,7 @@ const Signup = () => {
     setLoading(true);
     setError('');
     try {
-      await axios.post('/api/auth/register', { username, email, password });
+      await api.post('/auth/register', { username, email, password });
       navigate('/login');
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed. Please try again.');

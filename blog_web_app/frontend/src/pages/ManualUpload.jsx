@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../utils/api';
 import Cookies from 'js-cookie';
 import { ArrowLeft, Send, Image as ImageIcon, Plus, X, Upload } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -30,7 +30,6 @@ const ManualUpload = () => {
     setLoading(true);
     setMessage({ type: '', text: '' });
 
-    const token = Cookies.get('userToken');
     const blogData = {
       title,
       content,
@@ -40,9 +39,7 @@ const ManualUpload = () => {
     };
 
     try {
-      await axios.post('/api/blogs', blogData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.post('/blogs', blogData);
       setMessage({ type: 'success', text: 'Blog published successfully!' });
       setTimeout(() => navigate('/'), 2000);
     } catch (err) {
