@@ -1,6 +1,7 @@
 const Blog = require('../models/Blog');
 const { spawn } = require('child_process');
 const path = require('path');
+const axios = require('axios');
 
 // In-memory store for agent status (shared across requests)
 let currentAgentStatus = {
@@ -268,7 +269,6 @@ const addComment = async (req, res) => {
 };
 
 const triggerAgentBlog = async (req, res) => {
-  const axios = require('axios');
   const { topic } = req.body;
   const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://agent-service:8000';
 
@@ -276,7 +276,7 @@ const triggerAgentBlog = async (req, res) => {
 
   try {
     // Send background request to agent service
-    axios.post(`${AGENT_SERVICE_URL}/generate`, { topic: topic || 'Trending AI News' });
+    await axios.post(`${AGENT_SERVICE_URL}/generate`, { topic: topic || 'Trending AI News' });
     res.status(202).json({ message: 'Agent triggered successfully tokens. It may take a few minutes to publish.' });
   } catch (error) {
     console.error(`❌ Agent Trigger Error: ${error.message}`);
@@ -311,7 +311,6 @@ const getAgentStatus = async (req, res) => {
 };
 
 const triggerRAGIndexing = async (blogId, text) => {
-  const axios = require('axios');
   const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://agent-service:8000';
 
   console.log(`🧠 Requesting RAG indexing for blog ${blogId} from microservice...`);
@@ -329,7 +328,6 @@ const triggerRAGIndexing = async (blogId, text) => {
 
 const askQuestion = async (req, res) => {
   try {
-    const axios = require('axios');
     const blog = await Blog.findById(req.params.id);
     if (!blog) return res.status(404).json({ message: 'Blog not found' });
     if (!blog.ragData || blog.ragData.length === 0) {

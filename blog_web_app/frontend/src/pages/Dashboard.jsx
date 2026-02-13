@@ -95,10 +95,7 @@ const Dashboard = () => {
     if (!window.confirm(`Are you sure you want to delete "${title}"?`)) return;
 
     try {
-      const token = Cookies.get('userToken');
-      await axios.delete(`/api/blogs/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete(`/blogs/${id}`);
       setMessage(`"${title}" deleted successfully.`);
       fetchStats(); // Refresh the list
     } catch (err) {

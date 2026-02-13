@@ -54,8 +54,15 @@ def query_content(rag_data, question):
     # Simple cosine similarity search
     results = []
     for item in rag_data:
+        if 'embedding' not in item or not item['embedding']:
+            continue
         doc_vector = np.array(item['embedding'])
         q_vector = np.array(query_vector)
+        
+        # Check if dimensions match
+        if doc_vector.shape != q_vector.shape:
+            continue
+            
         similarity = np.dot(doc_vector, q_vector) / (np.linalg.norm(doc_vector) * np.linalg.norm(q_vector))
         results.append((item['text'], similarity))
     

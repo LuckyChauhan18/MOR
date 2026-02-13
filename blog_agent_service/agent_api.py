@@ -48,15 +48,20 @@ def index_blog_api(request: IndexRequest):
         rag_data = index_content(request.text)
         return {"blog_id": request.blog_id, "rag_data": rag_data}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/query")
 def query_blog_api(request: QueryRequest):
+    print(f"DEBUG: Querying with {len(request.rag_data)} chunks. Question: {request.question}")
     from agents.rag_logic import query_content
     try:
         answer = query_content(request.rag_data, request.question)
         return {"answer": answer}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
