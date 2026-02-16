@@ -16,3 +16,5 @@ tqdm>=4.66.0
 openai
 tiktoken
 python-multipart
+redis
+langchain-redis

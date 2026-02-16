@@ -340,6 +340,7 @@ const askQuestion = async (req, res) => {
     console.log(`🤖 Requesting AI Answer for blog ${req.params.id} from microservice...`);
 
     const { data } = await axios.post(`${AGENT_SERVICE_URL}/query`, {
+      blog_id: req.params.id,
       rag_data: blog.ragData,
       question
     });

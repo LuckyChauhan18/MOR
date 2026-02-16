@@ -22,6 +22,7 @@ class IndexRequest(BaseModel):
     text: str
 
 class QueryRequest(BaseModel):
+    blog_id: str
     rag_data: List[dict]
     question: str
 
@@ -54,10 +55,10 @@ def index_blog_api(request: IndexRequest):
 
 @app.post("/query")
 def query_blog_api(request: QueryRequest):
-    print(f"DEBUG: Querying with {len(request.rag_data)} chunks. Question: {request.question}")
+    print(f"DEBUG: Querying blog {request.blog_id} with {len(request.rag_data)} chunks. Question: {request.question}")
     from agents.rag_logic import query_content
     try:
-        answer = query_content(request.rag_data, request.question)
+        answer = query_content(request.blog_id, request.rag_data, request.question)
         return {"answer": answer}
     except Exception as e:
         import traceback
