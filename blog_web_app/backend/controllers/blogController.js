@@ -2,6 +2,17 @@ const Blog = require('../models/Blog');
 const { spawn } = require('child_process');
 const path = require('path');
 const axios = require('axios');
+const redis = require('redis');
+
+// Redis Client Setup
+const redisClient = redis.createClient({
+  url: process.env.REDIS_URL
+});
+
+redisClient.on('error', (err) => console.log('Redis Client Error', err));
+redisClient.connect().catch(console.error);
+
+const CACHE_KEY = 'blog_list_cache';
 
 // In-memory store for agent status (shared across requests)
 let currentAgentStatus = {
@@ -16,8 +27,34 @@ let currentAgentStatus = {
 // @access  Public
 const getBlogs = async (req, res) => {
   try {
-    const blogs = await Blog.find().sort({ createdAt: -1 });
-    console.log('Blogs fetched:', blogs.length);
+    // 1. Try to fetch from Redis Cache
+    try {
+      const cachedBlogs = await redisClient.get(CACHE_KEY);
+      if (cachedBlogs) {
+        console.log('Blogs fetched from Redis Cache');
+        return res.json(JSON.parse(cachedBlogs));
+      }
+    } catch (cacheError) {
+      console.error('Redis Cache Get Error:', cacheError);
+    }
+
+    // 2. Fetch from MongoDB with Selective Fields if Cache Miss
+    // We exclude ragData and heavy content for the list view to reduce payload size
+    const blogs = await Blog.find()
+      .select('title slug summary content author categories isAgentGenerated bannerImage date createdAt')
+      .sort({ createdAt: -1 });
+
+    console.log('Blogs fetched from MongoDB:', blogs.length);
+
+    // 3. Save to Redis Cache (expires in 1 hour)
+    try {
+      await redisClient.set(CACHE_KEY, JSON.stringify(blogs), {
+        EX: 3600 // 1 hour
+      });
+    } catch (cacheError) {
+      console.error('Redis Cache Set Error:', cacheError);
+    }
+
     res.json(blogs);
   } catch (error) {
     console.error('GET Blogs Error:', error);
@@ -60,6 +97,9 @@ const createBlog = async (req, res) => {
       author: req.user.username,
       isAgentGenerated: false
     });
+
+    // Clear blog list cache
+    await redisClient.del(CACHE_KEY).catch(console.error);
 
     // Background indexing
     triggerRAGIndexing(blog._id, content);
@@ -105,6 +145,9 @@ const createAgentBlog = async (req, res) => {
       isAgentGenerated: true,
       bannerImage
     });
+
+    // Clear blog list cache
+    await redisClient.del(CACHE_KEY).catch(console.error);
 
     // Background indexing
     triggerRAGIndexing(blog._id, content);
@@ -199,6 +242,10 @@ const deleteBlog = async (req, res) => {
     }
 
     await Blog.deleteOne({ _id: req.params.id });
+
+    // Clear blog list cache
+    await redisClient.del(CACHE_KEY).catch(console.error);
+
     res.json({ message: 'Blog removed successfully' });
   } catch (error) {
     console.error('Delete Blog Error:', error);
