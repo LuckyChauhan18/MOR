@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Docker Compose Build Check
-        run: docker-compose -f ./blog_web_app/docker-compose.yml config
+        run: docker compose -f ./blog_web_app/docker-compose.yml config
 
   deploy:
     name: Deploy Stage
@@ -74,4 +74,4 @@ jobs:
             echo "${{ secrets.PROD_ENV_BACKEND }}" > backend/.env
             echo "${{ secrets.PROD_ENV_FRONTEND }}" > frontend/.env
             echo "${{ secrets.PROD_ENV_AGENT }}" > ../blog_agent_service/.env
-            docker-compose up -d --build
+            docker compose up -d --build
