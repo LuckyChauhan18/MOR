@@ -88,9 +88,24 @@ jobs:
             git pull origin main
             
             echo "Writing environment variables..."
-            echo "$PROD_ENV_BACKEND" > backend/.env
-            echo "$PROD_ENV_FRONTEND" > frontend/.env
-            echo "$PROD_ENV_AGENT" > ../blog_agent_service/.env
+            cat << 'EOF' > backend/.env
+            ${{ secrets.PROD_ENV_BACKEND }}
+            EOF
+            cat << 'EOF' > frontend/.env
+            ${{ secrets.PROD_ENV_FRONTEND }}
+            EOF
+            cat << 'EOF' > ../blog_agent_service/.env
+            ${{ secrets.PROD_ENV_AGENT }}
+            EOF
             
             echo "Restarting Docker containers with sudo..."
             sudo docker compose up -d --build
+            
+            echo "Waiting for services to start..."
+            sleep 10
+            
+            echo "--- Container Status ---"
+            sudo docker compose ps
+            
+            echo "--- Backend Logs (Diagnosing 502) ---"
+            sudo docker compose logs --tail=20 backend
