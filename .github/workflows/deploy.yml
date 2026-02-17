@@ -74,9 +74,9 @@ jobs:
           PROD_ENV_FRONTEND: ${{ secrets.PROD_ENV_FRONTEND }}${{ vars.PROD_ENV_FRONTEND }}
           PROD_ENV_AGENT: ${{ secrets.PROD_ENV_AGENT }}${{ vars.PROD_ENV_AGENT }}
         with:
-          host: ${{ secrets.AWS_HOST }}
-          username: ${{ secrets.AWS_USER }}
-          key: ${{ secrets.AWS_SSH_KEY }}
+          host: ${{ secrets.AWS_HOST }}${{ vars.AWS_HOST }}
+          username: ${{ secrets.AWS_USER }}${{ vars.AWS_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}${{ vars.AWS_SSH_KEY }}
           envs: PROD_ENV_BACKEND,PROD_ENV_FRONTEND,PROD_ENV_AGENT
           command_timeout: 30m
           script: |
