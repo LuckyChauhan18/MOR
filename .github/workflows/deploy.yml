@@ -113,3 +113,14 @@ jobs:
             
             echo "--- Backend Logs (Diagnosing 502) ---"
             sudo docker compose logs --tail=20 backend
+            
+            echo "--- Redis Connectivity Test ---"
+            # Try to ping the Redis host from the server
+            REDIS_HOST=$(echo $REDIS_URL | sed -e 's|.*@||' -e 's|:.*||')
+            REDIS_PORT=$(echo $REDIS_URL | sed -e 's|.*:||')
+            echo "Testing connection to $REDIS_HOST on port $REDIS_PORT..."
+            if nc -zv -w 5 $REDIS_HOST $REDIS_PORT; then
+              echo "✅ Network connection to Redis Cloud is SUCCESSFUL."
+            else
+              echo "❌ Network connection to Redis Cloud FAILED. Please check AWS Security Group Outbound rules."
+            fi
