@@ -31,6 +31,9 @@ def get_llm():
 
 def get_redis_client():
     url = os.getenv("REDIS_URL", "redis://localhost:6379")
+    # Log sanitized URL for debugging
+    log_url = re.sub(r':([^:@]+)@', ':****@', url)
+    print(f"DEBUG: Connecting to Redis at {log_url}")
     return redis.from_url(url)
 
 def normalize_question(q):
@@ -40,12 +43,13 @@ def normalize_question(q):
     q = re.sub(r'[?.\!]', '', q)
     # Remove common filler phrases that don't change intent
     fillers = [
-        r'\b(of|about|in|on)\b',
+        r'\b(what is|what are|tell me|explain|summarize|who is|show me)\b',
+        r'\b(of|about|in|on|the|a|an)\b',
         r'\b(this blog|the blog|this post|the post|this article|the article|blog|post|article)\b',
     ]
     for pattern in fillers:
-        q = re.sub(pattern, '', q)
-    # Clean up double spaces
+        q = re.sub(pattern, ' ', q)
+    # Clean up double spaces and strip again after substitutions
     q = re.sub(r'\s+', ' ', q).strip()
     return q
 
@@ -68,13 +72,12 @@ def search_semantic_cache(blog_id, query_vector, threshold=0.9):
         
         if results:
             doc, score = results[0]
-            # In Redis similarity_search_with_score, lower score often means more similar depending on distance metric
-            # But let's assume we use Cosine (1 - distance) or similar.
-            # langchain-redis usually returns distance.
-            if score < 0.1: # Distance < 0.1 means similarity > 0.9
+            # Higher score in some distance metrics means less similar. 
+            # 0.2 is more permissive than 0.1
+            if score < 0.2: 
                 return doc.metadata.get("answer")
     except Exception as e:
-        print(f"Redis Cache Error: {e}")
+        print(f"Redis Semantic Cache Error: {e}")
     return None
 
 def update_semantic_cache(blog_id, question, answer, embedding):
@@ -87,7 +90,7 @@ def update_semantic_cache(blog_id, question, answer, embedding):
         kv_cache_key = f"exact_cache:{blog_id}:{question_hash}"
         r.setex(kv_cache_key, 7200, answer) # TTL = 2 hours
 
-        # 2. Semantic cache (Vector Store) - naturally supports LRU if Redis is configured
+        # 2. Semantic cache (Vector Store)
         from langchain_redis import RedisVectorStore
         from langchain_core.documents import Document
         
@@ -103,6 +106,7 @@ def update_semantic_cache(blog_id, question, answer, embedding):
             metadata={"answer": answer, "blog_id": blog_id}
         )
         vector_store.add_documents([doc])
+        print(f"DEBUG: Saved to Redis Cache for blog {blog_id}: {question_norm}")
     except Exception as e:
         print(f"Redis Cache Update Error: {e}")
 
@@ -137,12 +141,15 @@ def query_content(blog_id, rag_data, question):
     
     # 1. Check Exact Match Cache first (with TTL)
     if blog_id:
-        r = get_redis_client()
-        kv_cache_key = f"exact_cache:{blog_id}:{question_hash}"
-        cached_answer = r.get(kv_cache_key)
-        if cached_answer:
-            print(f"DEBUG: Exact Cache Hit for question: {question}")
-            return cached_answer.decode('utf-8')
+        try:
+            r = get_redis_client()
+            kv_cache_key = f"exact_cache:{blog_id}:{question_hash}"
+            cached_answer = r.get(kv_cache_key)
+            if cached_answer:
+                print(f"DEBUG: Exact Cache Hit for: {question_clean}")
+                return cached_answer.decode('utf-8')
+        except Exception as e:
+            print(f"Redis Exact Cache Error: {e}")
 
     # 2. Check for Concurrency Lock
     lock_key = f"lock:{blog_id}:{question_hash}"
