@@ -50,6 +50,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Create Dummy Env Files for Validation
+        run: |
+          touch ./blog_web_app/backend/.env
+          touch ./blog_web_app/frontend/.env
+          touch ./blog_agent_service/.env
+
       - name: Docker Compose Build Check
         run: docker compose -f ./blog_web_app/docker-compose.yml config
 
