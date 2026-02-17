@@ -74,10 +74,25 @@ jobs:
           username: ${{ secrets.AWS_USER }}
           key: ${{ secrets.AWS_SSH_KEY }}
           script: |
+            set -e
             cd ~/MOR/blog_web_app
+            echo "Current directory: $(pwd)"
+            
+            echo "Pulling latest code..."
             git pull origin main
-            # Update .env files from GitHub secrets
-            echo "${{ secrets.PROD_ENV_BACKEND }}" > backend/.env
-            echo "${{ secrets.PROD_ENV_FRONTEND }}" > frontend/.env
-            echo "${{ secrets.PROD_ENV_AGENT }}" > ../blog_agent_service/.env
+            
+            echo "Updating environment variables..."
+            cat << 'EOF' > backend/.env
+            ${{ secrets.PROD_ENV_BACKEND }}
+            EOF
+            
+            cat << 'EOF' > frontend/.env
+            ${{ secrets.PROD_ENV_FRONTEND }}
+            EOF
+            
+            cat << 'EOF' > ../blog_agent_service/.env
+            ${{ secrets.PROD_ENV_AGENT }}
+            EOF
+            
+            echo "Restarting Docker containers..."
             docker compose up -d --build
