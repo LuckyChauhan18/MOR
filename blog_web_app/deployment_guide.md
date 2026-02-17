@@ -70,5 +70,14 @@ In your Oracle Cloud Console (Networking > Ingress Rules), open:
 | `AGENT_SERVICE_URL` | `http://agent-service:8000` (for Docker) or Render URL |
 | `VITE_API_BASE_URL` | Your Backend API URL |
 
+## 🤖 CI/CD Automation (GitHub Actions)
+
+This project uses GitHub Actions for automated deployment to AWS:
+- **Workflow**: `.github/workflows/deploy.yml`
+- **Stages**: Test -> Build -> Deploy
+- **Configuration**: Requires GitHub Secrets (`AWS_SSH_KEY`, `PROD_ENV_BACKEND`, etc.)
+
+Any push to the `main` branch will automatically trigger a redeploy to your EC2 instance.
+
 > [!TIP]
 > Always keep your `JWT_SECRET` and `OPENROUTER_API_KEY` private in the hosting provider's dashboard, **never** commit them to Git.
