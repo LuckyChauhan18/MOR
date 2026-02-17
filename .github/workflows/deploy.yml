@@ -69,30 +69,27 @@ jobs:
 
       - name: Deploy to AWS EC2
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          PROD_ENV_BACKEND: ${{ secrets.PROD_ENV_BACKEND }}
+          PROD_ENV_FRONTEND: ${{ secrets.PROD_ENV_FRONTEND }}
+          PROD_ENV_AGENT: ${{ secrets.PROD_ENV_AGENT }}
         with:
           host: ${{ secrets.AWS_HOST }}
           username: ${{ secrets.AWS_USER }}
           key: ${{ secrets.AWS_SSH_KEY }}
+          envs: PROD_ENV_BACKEND,PROD_ENV_FRONTEND,PROD_ENV_AGENT
           script: |
             set -e
             cd ~/MOR/blog_web_app
             echo "Current directory: $(pwd)"
             
-            echo "Pulling latest code..."
+            echo "Pulling latest code from GitHub..."
             git pull origin main
             
-            echo "Updating environment variables..."
-            cat << 'EOF' > backend/.env
-            ${{ secrets.PROD_ENV_BACKEND }}
-            EOF
+            echo "Writing environment variables..."
+            echo "$PROD_ENV_BACKEND" > backend/.env
+            echo "$PROD_ENV_FRONTEND" > frontend/.env
+            echo "$PROD_ENV_AGENT" > ../blog_agent_service/.env
             
-            cat << 'EOF' > frontend/.env
-            ${{ secrets.PROD_ENV_FRONTEND }}
-            EOF
-            
-            cat << 'EOF' > ../blog_agent_service/.env
-            ${{ secrets.PROD_ENV_AGENT }}
-            EOF
-            
-            echo "Restarting Docker containers..."
-            docker compose up -d --build
+            echo "Restarting Docker containers with sudo..."
+            sudo docker compose up -d --build
