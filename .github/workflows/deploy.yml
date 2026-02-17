@@ -50,11 +50,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: actions/setup-docker-action@v1 # Note: Standardizing docker build check
-        with:
-          docker-compose-file: ./blog_web_app/docker-compose.yml
-
       - name: Docker Compose Build Check
         run: docker-compose -f ./blog_web_app/docker-compose.yml config
 
