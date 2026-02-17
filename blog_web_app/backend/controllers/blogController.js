@@ -38,8 +38,6 @@ const getBlogs = async (req, res) => {
       console.error('Redis Cache Get Error:', cacheError);
     }
 
-    // 2. Fetch from MongoDB with Selective Fields if Cache Miss
-    // We exclude ragData and heavy content for the list view to reduce payload size
     const blogs = await Blog.find()
       .select('title slug summary content author categories isAgentGenerated bannerImage date createdAt')
       .sort({ createdAt: -1 });
