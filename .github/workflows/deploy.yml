@@ -70,19 +70,28 @@ jobs:
       - name: Deploy to AWS EC2
         uses: appleboy/ssh-action@v1.0.3
         env:
-          PROD_ENV_BACKEND: ${{ secrets.PROD_ENV_BACKEND }}${{ vars.PROD_ENV_BACKEND }}
-          PROD_ENV_FRONTEND: ${{ secrets.PROD_ENV_FRONTEND }}${{ vars.PROD_ENV_FRONTEND }}
-          PROD_ENV_AGENT: ${{ secrets.PROD_ENV_AGENT }}${{ vars.PROD_ENV_AGENT }}
+          PROD_ENV_BACKEND: ${{ secrets.PROD_ENV_BACKEND || vars.PROD_ENV_BACKEND }}
+          PROD_ENV_FRONTEND: ${{ secrets.PROD_ENV_FRONTEND || vars.PROD_ENV_FRONTEND }}
+          PROD_ENV_AGENT: ${{ secrets.PROD_ENV_AGENT || vars.PROD_ENV_AGENT }}
         with:
-          host: ${{ secrets.AWS_HOST }}${{ vars.AWS_HOST }}
-          username: ${{ secrets.AWS_USER }}${{ vars.AWS_USER }}
-          key: ${{ secrets.AWS_SSH_KEY }}${{ vars.AWS_SSH_KEY }}
+          host: ${{ secrets.AWS_HOST || vars.AWS_HOST }}
+          username: ${{ secrets.AWS_USER || vars.AWS_USER }}
+          key: ${{ secrets.AWS_SSH_KEY || vars.AWS_SSH_KEY }}
           envs: PROD_ENV_BACKEND,PROD_ENV_FRONTEND,PROD_ENV_AGENT
           command_timeout: 30m
           script: |
             set -e
             cd ~/MOR/blog_web_app
             echo "Current directory: $(pwd)"
+            
+            echo "Ensuring Swap Space (Preventing memory hangs)..."
+            if [ ! -f /swapfile ]; then
+              sudo fallocate -l 2G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+              echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+            fi
             
             echo "Pulling latest code from GitHub..."
             git pull origin main
