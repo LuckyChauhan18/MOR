@@ -78,6 +78,7 @@ jobs:
           username: ${{ secrets.AWS_USER }}
           key: ${{ secrets.AWS_SSH_KEY }}
           envs: PROD_ENV_BACKEND,PROD_ENV_FRONTEND,PROD_ENV_AGENT
+          command_timeout: 30m
           script: |
             set -e
             cd ~/MOR/blog_web_app
