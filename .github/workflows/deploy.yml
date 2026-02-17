@@ -1,0 +1,82 @@
+name: Deployment Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test Stage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './blog_web_app/backend/package-lock.json'
+
+      - name: Install Backend Dependencies
+        working-directory: ./blog_web_app/backend
+        run: npm install
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Agent Dependencies
+        working-directory: ./blog_agent_service
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Agent Verification Test
+        working-directory: ./blog_agent_service
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          AGENT_SECRET_KEY: ${{ secrets.AGENT_SECRET_KEY }}
+        run: python verify_modular_agent.py
+
+  build:
+    name: Build Stage
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: actions/setup-docker-action@v1 # Note: Standardizing docker build check
+        with:
+          docker-compose-file: ./blog_web_app/docker-compose.yml
+
+      - name: Docker Compose Build Check
+        run: docker-compose -f ./blog_web_app/docker-compose.yml config
+
+  deploy:
+    name: Deploy Stage
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to AWS EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.AWS_HOST }}
+          username: ${{ secrets.AWS_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script: |
+            cd ~/MOR/blog_web_app
+            git pull origin main
+            # Update .env files from GitHub secrets
+            echo "${{ secrets.PROD_ENV_BACKEND }}" > backend/.env
+            echo "${{ secrets.PROD_ENV_FRONTEND }}" > frontend/.env
+            echo "${{ secrets.PROD_ENV_AGENT }}" > ../blog_agent_service/.env
+            docker-compose up -d --build
