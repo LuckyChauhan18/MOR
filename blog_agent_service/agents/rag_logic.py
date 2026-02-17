@@ -130,9 +130,32 @@ def index_content(text):
         })
     return rag_data
 
+def get_basic_response(question):
+    """Return hardcoded formal responses for basic greetings/questions."""
+    q = normalize_question(question)
+    
+    # Mapping of variations to formal responses
+    responses = {
+        "hello": "Greetings! How may I assist you today with information regarding this blog post?",
+        "hey": "Greetings! How may I assist you today with information regarding this blog post?",
+        "hi": "Greetings! How may I assist you today with information regarding this blog post?",
+        "how are you": "I am functioning optimally and ready to assist you with your inquiries. How can I help you regarding this blog?",
+        "who are you": "I am the AI Blog Assistant, dedicated to helping you understand and explore the content of this platform.",
+        "thanks": "You are most welcome. Is there anything else you would like to know about the blog?",
+        "thank you": "You are most welcome. Is there anything else you would like to know about the blog?"
+    }
+    
+    return responses.get(q)
+
 def query_content(blog_id, rag_data, question):
     if not rag_data and not blog_id:
         return "No information available for this blog."
+    
+    # 0. Check for Basic Greetings / Hardcoded Responses
+    basic_ans = get_basic_response(question)
+    if basic_ans:
+        print(f"DEBUG: Basic hardcoded response triggered for: {question}")
+        return basic_ans
         
     embeddings_model = get_embeddings()
     # Normalize question: remove fillers, punctuation, etc.
