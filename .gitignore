@@ -46,10 +46,7 @@ coverage.xml
 .pytest_cache/
 
 # Tests and Debug
-tests/
 debug/
-documents/
-extra/
 blog_agent_service/logs/
 blog_web_app/backend/logs/
 
