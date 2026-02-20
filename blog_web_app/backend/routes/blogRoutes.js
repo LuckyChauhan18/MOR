@@ -368,7 +368,7 @@ router.post('/:id/comment', protect, blogController.addComment);
  *       500:
  *         description: AI service error
  */
-router.post('/:id/ask', blogController.askQuestion);
+router.post('/:id/ask', protect, blogController.askQuestion);
 
 /**
  * @swagger

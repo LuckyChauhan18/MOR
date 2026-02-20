@@ -109,18 +109,29 @@ const BlogDetail = () => {
     e.preventDefault();
     if (!question.trim()) return;
 
+    if (!user) {
+      setChatHistory(prev => [...prev, { role: 'error', text: 'Please login to ask the AI Assistant.' }]);
+      setQuestion('');
+      return;
+    }
+
     const userMsg = { role: 'user', text: question };
     setChatHistory(prev => [...prev, userMsg]);
+    const currentQuestion = question;
     setQuestion('');
     setChatLoading(true);
 
     try {
-      const { data } = await api.post(`/blogs/${blog._id}/ask`, { question });
+      const { data } = await api.post(`/blogs/${blog._id}/ask`, { question: currentQuestion });
       const aiMsg = { role: 'ai', text: data.answer };
       setChatHistory(prev => [...prev, aiMsg]);
+      if (data.remainingQuestions !== undefined && data.remainingQuestions !== 'Unlimited') {
+        setChatHistory(prev => [...prev, { role: 'info', text: `Questions remaining: ${data.remainingQuestions}` }]);
+      }
     } catch (err) {
       console.error(err);
-      setChatHistory(prev => [...prev, { role: 'error', text: 'Sorry, I couldn\'t process that question.' }]);
+      const errorMsg = err.response?.data?.message || 'Sorry, I couldn\'t process that question.';
+      setChatHistory(prev => [...prev, { role: 'error', text: errorMsg }]);
     } finally {
       setChatLoading(false);
     }
@@ -369,6 +380,11 @@ const BlogDetail = () => {
                     <div style={{ textAlign: 'center', paddingTop: '40px', color: 'var(--text-muted)' }}>
                       <Sparkles size={40} style={{ marginBottom: '15px', opacity: 0.5 }} />
                       <p>I've read this entire blog! Ask me anything about it.</p>
+                      {user && user.role !== 'admin' && (
+                        <p style={{ fontSize: '0.8rem', marginTop: '10px', color: 'var(--primary)' }}>
+                          Note: You have a limit of 5 AI questions.
+                        </p>
+                      )}
                     </div>
                   )}
                   {chatHistory.map((msg, i) => (
@@ -382,8 +398,9 @@ const BlogDetail = () => {
                         padding: '12px 18px',
                         borderRadius: '16px',
                         fontSize: '0.95rem',
-                        background: msg.role === 'user' ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
-                        border: msg.role === 'user' ? 'none' : '1px solid var(--glass-border)'
+                        background: msg.role === 'user' ? 'var(--primary)' : msg.role === 'error' ? 'rgba(239, 68, 68, 0.1)' : msg.role === 'info' ? 'rgba(139, 92, 246, 0.05)' : 'rgba(255,255,255,0.05)',
+                        border: msg.role === 'user' ? 'none' : msg.role === 'error' ? '1px solid #ef4444' : '1px solid var(--glass-border)',
+                        color: msg.role === 'error' ? '#ef4444' : msg.role === 'info' ? 'var(--text-muted)' : 'white'
                       }}
                     >
                       {msg.text}

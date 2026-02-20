@@ -22,6 +22,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ['admin', 'editor'],
     default: 'editor',
+  },
+  aiQuestionCount: {
+    type: Number,
+    default: 0,
   }
 }, { timestamps: true });
 

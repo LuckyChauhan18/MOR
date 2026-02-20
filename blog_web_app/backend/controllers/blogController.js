@@ -1,5 +1,6 @@
 const Blog = require('../models/Blog');
 const Comment = require('../models/Comment');
+const User = require('../models/User');
 const { spawn } = require('child_process');
 const path = require('path');
 const axios = require('axios');
@@ -465,6 +466,14 @@ const askQuestion = async (req, res) => {
     const { question } = req.body;
     const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://127.0.0.1:8000';
 
+    // Rate Limit Check (Non-admins only)
+    if (req.user.role !== 'admin' && req.user.aiQuestionCount >= 5) {
+      return res.status(403).json({
+        message: 'You have reached your 5-question limit for the AI Assistant.',
+        limitReached: true
+      });
+    }
+
     console.log(`🤖 Requesting AI Answer for blog ${req.params.id}...`);
 
     try {
@@ -473,7 +482,17 @@ const askQuestion = async (req, res) => {
         blog_id: req.params.id,
         question
       }, { timeout: 30000 });
-      return res.json({ answer: data.answer });
+
+      // Increment question count for non-admins
+      if (req.user.role !== 'admin') {
+        req.user.aiQuestionCount = (req.user.aiQuestionCount || 0) + 1;
+        await req.user.save();
+      }
+
+      return res.json({
+        answer: data.answer,
+        remainingQuestions: req.user.role === 'admin' ? 'Unlimited' : Math.max(0, 5 - req.user.aiQuestionCount)
+      });
     } catch (serviceErr) {
       console.error(`AI Service Error (${AGENT_SERVICE_URL}):`, serviceErr.message);
 
