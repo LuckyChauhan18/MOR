@@ -103,7 +103,14 @@ jobs:
           command_timeout: 30m
           script: |
             set -e
-            cd ~/MOR/blog_web_app
+            
+            echo "Checking if repository exists..."
+            if [ ! -d "$HOME/MOR" ]; then
+              echo "Repository not found. Cloning..."
+              git clone https://github.com/LuckyChauhan18/MOR.git "$HOME/MOR"
+            fi
+            
+            cd "$HOME/MOR/blog_web_app"
             
             echo "Ensuring Swap Space..."
             if [ ! -f /swapfile ]; then
