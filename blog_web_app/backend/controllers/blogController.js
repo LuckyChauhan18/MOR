@@ -486,7 +486,7 @@ const askQuestion = async (req, res) => {
 
       return res.status(503).json({
         message: errorMessage,
-        details: serviceErr.message
+        details: serviceErr.response?.data || serviceErr.message
       });
     }
   } catch (error) {

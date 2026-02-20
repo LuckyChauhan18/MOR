@@ -23,9 +23,12 @@ QDRANT_COLLECTION = "blog_embeddings"
 VECTOR_SIZE = 1536  # text-embedding-3-small dimension
 
 def get_embeddings():
+    key = os.getenv("OPENROUTER_API_KEY")
+    if not key:
+        print("CRITICAL: OPENROUTER_API_KEY is missing!")
     return OpenAIEmbeddings(
         model="openai/text-embedding-3-small",
-        openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+        openai_api_key=key,
         openai_api_base="https://openrouter.ai/api/v1"
     )
 
@@ -258,32 +261,38 @@ def query_content(blog_id, rag_data, question):
                 time.sleep(0.5)
 
     # 3. Check Semantic Cache in Redis
-    query_vector = embeddings_model.embed_query(question)
+    # 3. Check Semantic Cache in Redis
     try:
+        print(f"DEBUG: Embedding question for semantic cache search...")
+        query_vector = embeddings_model.embed_query(question)
         if blog_id:
             cached_answer = search_semantic_cache(blog_id, query_vector)
             if cached_answer:
                 print(f"DEBUG: Semantic Cache Hit for question: {question}")
                 return cached_answer
+    except Exception as e:
+        print(f"DEBUG: Semantic Cache / Embedding Error: {e}")
+        if 'query_vector' not in locals():
+            return "AI service is experiencing high latency. Please try again."
 
-        # 4. Search Qdrant for similar chunks
-        print(f"DEBUG: Cache Miss for question: {question}. Performing Qdrant RAG...")
-        
-        client = get_qdrant_client()
-        try:
-            search_results = client.query_points(
-                collection_name=QDRANT_COLLECTION,
-                query=query_vector,
-                query_filter=Filter(
-                    must=[FieldCondition(key="blog_id", match=MatchValue(value=blog_id))]
-                ),
-                limit=8
-            )
-            top_chunks = [hit.payload["text"] for hit in search_results.points]
-            print(f"DEBUG: Qdrant query_points success. Found {len(top_chunks)} points.")
-        except Exception as qe:
-            print(f"DEBUG: Qdrant Query Error: {qe}")
-            top_chunks = []
+    # 4. Search Qdrant for similar chunks
+    print(f"DEBUG: Cache Miss for question: {question}. Performing Qdrant RAG...")
+    
+    client = get_qdrant_client()
+    try:
+        search_results = client.query_points(
+            collection_name=QDRANT_COLLECTION,
+            query=query_vector,
+            query_filter=Filter(
+                must=[FieldCondition(key="blog_id", match=MatchValue(value=blog_id))]
+            ),
+            limit=8
+        )
+        top_chunks = [hit.payload["text"] for hit in search_results.points]
+        print(f"DEBUG: Qdrant query_points success. Found {len(top_chunks)} points.")
+    except Exception as qe:
+        print(f"DEBUG: Qdrant Query Error: {qe}")
+        top_chunks = []
         
         if not top_chunks:
             # Fallback: use rag_data from MongoDB if Qdrant has no data
@@ -318,12 +327,16 @@ def query_content(blog_id, rag_data, question):
         - Keep responses concise and professional.
         """
         
-        response = llm.invoke([
-            SystemMessage(content=RAG_SYSTEM),
-            HumanMessage(content=f"Blog context:\n{context}\n\nQuestion: {question}")
-        ])
-        
-        answer = response.content
+        try:
+            print(f"DEBUG: Invoking OpenRouter LLM for answer...")
+            response = llm.invoke([
+                SystemMessage(content=RAG_SYSTEM),
+                HumanMessage(content=f"Blog context:\n{context}\n\nQuestion: {question}")
+            ])
+            answer = response.content
+        except Exception as le:
+            print(f"DEBUG: LLM Invoke Error: {le}")
+            return f"AI failed to generate a response (LLM Error). Details: {str(le)[:100]}"
         
         # 5. Update Redis cache
         if blog_id:
