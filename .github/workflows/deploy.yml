@@ -130,6 +130,6 @@ jobs:
             printf "%s" "$PROD_ENV_AGENT" > ../blog_agent_service/.env
             
             echo "Rebuilding and restarting containers..."
-            sudo docker compose up -d --build
+            sudo docker-compose up -d --build
             
             echo "Deployment successful."
