@@ -133,6 +133,7 @@ jobs:
             
             echo "Cleaning up system and Docker disk space..."
             sudo apt-get clean
+            sudo journalctl --vacuum-time=1d || true
             sudo docker system prune -af --volumes || true
             sudo docker builder prune -af || true
             

@@ -11,6 +11,11 @@ services:
       - AGENT_SERVICE_URL=http://agent-service:8000
     networks:
       - blog_network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5000/api/blogs/stats" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   frontend:
     build: ./frontend
