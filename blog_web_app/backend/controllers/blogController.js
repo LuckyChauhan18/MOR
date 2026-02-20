@@ -468,35 +468,25 @@ const askQuestion = async (req, res) => {
     console.log(`🤖 Requesting AI Answer for blog ${req.params.id}...`);
 
     try {
-      // Try agent microservice first (Docker / production)
+      // Direct communication with agent microservice (Docker / production)
       const { data } = await axios.post(`${AGENT_SERVICE_URL}/query`, {
         blog_id: req.params.id,
         question
       }, { timeout: 30000 });
       return res.json({ answer: data.answer });
     } catch (serviceErr) {
-      // Fallback to local Python script (local dev)
-      console.log('Agent service unreachable, falling back to local rag_service.py...');
-      const { spawn } = require('child_process');
-      const path = require('path');
-      const scriptPath = path.join(__dirname, '..', 'scripts', 'rag_service.py');
+      console.error(`AI Service Error (${AGENT_SERVICE_URL}):`, serviceErr.message);
 
-      const input = JSON.stringify({ blog_id: req.params.id, question });
-      const py = spawn('python', [scriptPath, 'query'], { env: { ...process.env } });
+      let errorMessage = 'AI Assistant is currently busy or unreachable. Please try again in a moment.';
+      if (serviceErr.code === 'ECONNREFUSED' || serviceErr.code === 'ENOTFOUND') {
+        errorMessage = 'AI Agent Service is offline. Please ensure the agent-service container is running.';
+      } else if (serviceErr.code === 'ETIMEDOUT') {
+        errorMessage = 'AI timed out while thinking. Please try a simpler question.';
+      }
 
-      let output = '';
-      let errOutput = '';
-      py.stdin.write(input);
-      py.stdin.end();
-      py.stdout.on('data', (d) => output += d.toString());
-      py.stderr.on('data', (d) => errOutput += d.toString());
-
-      py.on('close', (code) => {
-        if (code !== 0) {
-          console.error('Python RAG error:', errOutput);
-          return res.status(500).json({ message: 'AI failed to answer question' });
-        }
-        res.json({ answer: output.trim() });
+      return res.status(503).json({
+        message: errorMessage,
+        details: serviceErr.message
       });
     }
   } catch (error) {
