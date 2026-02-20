@@ -146,7 +146,7 @@ const Dashboard = () => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                     <p style={{ fontSize: '0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{blog.title}</p>
                     <button
-                      onClick={() => handleDelete(blog.id, blog.title)}
+                      onClick={() => handleDelete(blog._id, blog.title)}
                       style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 0 0 10px', opacity: 0.6 }}
                       title="Delete Blog"
                     >
