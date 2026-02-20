@@ -208,145 +208,111 @@ def get_basic_response(question):
     return responses.get(q)
 
 def query_content(blog_id, rag_data, question):
-    """Query blog content using Qdrant vector search instead of in-memory numpy."""
+    """Query blog content using Qdrant vector search with fallback to MongoDB."""
     if not blog_id:
         return "No information available for this blog."
     
     # 0. Check for Basic Greetings
     basic_ans = get_basic_response(question)
     if basic_ans:
-        print(f"DEBUG: Basic hardcoded response triggered for: {question}")
+        print(f"DEBUG: Basic response triggered: {question}")
         return basic_ans
         
     embeddings_model = get_embeddings()
     question_clean = normalize_question(question)
     question_hash = hashlib.md5(question_clean.encode()).hexdigest()
     
-    # 1. Check Exact Match Cache first
-    if blog_id:
-        try:
-            r = get_redis_client()
-            kv_cache_key = f"exact_cache:{blog_id}:{question_hash}"
-            cached_answer = r.get(kv_cache_key)
-            if cached_answer:
-                print(f"DEBUG: Exact Cache Hit for: {question_clean}")
-                return cached_answer.decode('utf-8')
-        except Exception as e:
-            print(f"Redis Exact Cache Error: {e}")
+    # 1. Check Exact Match Cache
+    try:
+        r = get_redis_client()
+        kv_cache_key = f"exact_cache:{blog_id}:{question_hash}"
+        cached_answer = r.get(kv_cache_key)
+        if cached_answer:
+            return cached_answer.decode('utf-8')
+    except Exception as e:
+        print(f"Redis Exact Cache Error: {e}")
 
     # 2. Concurrency Lock
     lock_key = f"lock:{blog_id}:{question_hash}"
-    if blog_id:
+    r = None
+    try:
         r = get_redis_client()
-        
         for attempt in range(2):
             if r.exists(lock_key):
-                print(f"DEBUG: Concurrent query detected for: {question}. Waiting...")
-                for _ in range(40): 
+                for _ in range(20): 
                     time.sleep(0.5)
                     ans = r.get(kv_cache_key)
-                    if ans:
-                        print(f"DEBUG: Retrieved answer from concurrent sibling for: {question}")
-                        return ans.decode('utf-8')
-                    if not r.exists(lock_key):
-                        break
-            
-            acquired = r.set(lock_key, "processing", ex=60, nx=True)
-            if acquired:
-                break
-            else:
-                if attempt == 1:
-                    ans = r.get(kv_cache_key)
                     if ans: return ans.decode('utf-8')
-                time.sleep(0.5)
+                    if not r.exists(lock_key): break
+            
+            if r.set(lock_key, "processing", ex=60, nx=True):
+                break
+            time.sleep(0.5)
+    except Exception as re:
+        print(f"Redis Lock Error: {re}")
 
     try:
-        # 3. Check Semantic Cache in Redis
+        # 3. Check Semantic Cache
+        query_vector = None
         try:
-            print(f"DEBUG: Embedding question for semantic cache search...")
             query_vector = embeddings_model.embed_query(question)
-            if blog_id:
-                cached_answer = search_semantic_cache(blog_id, query_vector)
-                if cached_answer:
-                    print(f"DEBUG: Semantic Cache Hit for question: {question}")
-                    return cached_answer
+            cached_answer = search_semantic_cache(blog_id, query_vector)
+            if cached_answer:
+                return cached_answer
         except Exception as e:
-            print(f"DEBUG: Semantic Cache / Embedding Error: {e}")
-            if 'query_vector' not in locals():
-                return "AI service is experiencing high latency. Please try again."
+            print(f"Embedding/Semantic Cache Error: {e}")
+            if query_vector is None:
+                return "AI service is currently experiencing high latency."
 
-        # 4. Search Qdrant for similar chunks
-        print(f"DEBUG: Cache Miss for question: {question}. Performing Qdrant RAG...")
-        
-        client = get_qdrant_client()
+        # 4. Search Qdrant
+        top_chunks = []
         try:
+            client = get_qdrant_client()
             search_results = client.query_points(
                 collection_name=QDRANT_COLLECTION,
                 query=query_vector,
-                query_filter=Filter(
-                    must=[FieldCondition(key="blog_id", match=MatchValue(value=blog_id))]
-                ),
+                query_filter=Filter(must=[FieldCondition(key="blog_id", match=MatchValue(value=blog_id))]),
                 limit=8
             )
             top_chunks = [hit.payload["text"] for hit in search_results.points]
-            print(f"DEBUG: Qdrant query_points success. Found {len(top_chunks)} points.")
         except Exception as qe:
-            print(f"DEBUG: Qdrant Query Error: {qe}")
-            top_chunks = []
+            print(f"Qdrant Query Error: {qe}")
+        
+        # Fallback to rag_data (MongoDB)
+        if not top_chunks and rag_data:
+            print("Fallback to MongoDB rag_data")
+            results = []
+            for item in rag_data:
+                if 'embedding' not in item or not item['embedding']: continue
+                doc_vector = np.array(item['embedding'])
+                q_vector = np.array(query_vector)
+                if doc_vector.shape != q_vector.shape: continue
+                similarity = np.dot(doc_vector, q_vector) / (np.linalg.norm(doc_vector) * np.linalg.norm(q_vector))
+                results.append((item['text'], similarity))
+            results.sort(key=lambda x: x[1], reverse=True)
+            top_chunks = [res[0] for res in results[:8]]
         
         if not top_chunks:
-            # Fallback: use rag_data from MongoDB if Qdrant has no data
-            if rag_data:
-                print("DEBUG: Qdrant returned no results, falling back to MongoDB rag_data")
-                results = []
-                for item in rag_data:
-                    if 'embedding' not in item or not item['embedding']:
-                        continue
-                    doc_vector = np.array(item['embedding'])
-                    q_vector = np.array(query_vector)
-                    if doc_vector.shape != q_vector.shape:
-                        continue
-                    similarity = np.dot(doc_vector, q_vector) / (np.linalg.norm(doc_vector) * np.linalg.norm(q_vector))
-                    results.append((item['text'], similarity))
-                results.sort(key=lambda x: x[1], reverse=True)
-                top_chunks = [r[0] for r in results[:8]]
-            
-            if not top_chunks:
-                return "No information available for this blog."
+            return "No specific information found for this blog."
         
         context = "\n\n".join(top_chunks)
-        
         llm = get_llm()
-        RAG_SYSTEM = """
-        You are a helpful assistant that answers questions based on the provided blog content.
-        
-        INSTRUCTIONS:
-        - Use the provided context to answer the question accurately.
-        - If the answer is not explicitly stated but can be inferred from the context, provide the inference clearly.
-        - Only if there is absolutely no relevant information, say: "Not found in the provided blog."
-        - Keep responses concise and professional.
-        """
+        RAG_SYSTEM = "You are a helpful AI assistant. Answer based on the provided blog context."
         
         try:
-            print(f"DEBUG: Invoking OpenRouter LLM for answer...")
             response = llm.invoke([
                 SystemMessage(content=RAG_SYSTEM),
-                HumanMessage(content=f"Blog context:\n{context}\n\nQuestion: {question}")
+                HumanMessage(content=f"Context:\n{context}\n\nQuestion: {question}")
             ])
             answer = response.content
+            if blog_id:
+                update_semantic_cache(blog_id, question, answer, query_vector)
+            return answer
         except Exception as le:
-            print(f"DEBUG: LLM Invoke Error: {le}")
-            return f"AI failed to generate a response (LLM Error). Details: {str(le)[:100]}"
-        
-        # 5. Update Redis cache
-        if blog_id:
-            update_semantic_cache(blog_id, question, answer, query_vector)
+            print(f"LLM Error: {le}")
+            return f"AI failed to generate response. {str(le)[:50]}"
             
-        return answer
     finally:
-        if blog_id:
-            try:
-                r = get_redis_client()
-                r.delete(lock_key)
-            except:
-                pass
+        if r and lock_key:
+            try: r.delete(lock_key)
+            except: pass
