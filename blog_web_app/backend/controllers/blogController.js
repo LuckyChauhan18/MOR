@@ -1,8 +1,10 @@
 const Blog = require('../models/Blog');
+const Comment = require('../models/Comment');
 const { spawn } = require('child_process');
 const path = require('path');
 const axios = require('axios');
 const redis = require('redis');
+const mongoose = require('mongoose');
 
 // Redis Client Setup
 const redisClient = redis.createClient({
@@ -10,7 +12,9 @@ const redisClient = redis.createClient({
 });
 
 redisClient.on('error', (err) => console.log('Redis Client Error', err));
-redisClient.connect().catch(console.error);
+redisClient.connect()
+  .then(() => console.log('✅ Redis Connected'))
+  .catch(err => console.error('❌ Redis Connection Error (Continuing without cache):', err.message));
 
 const CACHE_KEY = 'blog_list_cache';
 
@@ -65,15 +69,29 @@ const getBlogs = async (req, res) => {
 // @access  Public
 const getBlogBySlug = async (req, res) => {
   try {
-    const blog = await Blog.findOne({ slug: req.params.slug });
+    const slug = req.params.slug?.trim();
+
+    if (!slug) {
+      return res.status(400).json({ message: 'Invalid blog slug' });
+    }
+
+    const blog = await Blog.findOne({ slug })
+      .lean();              // Return plain JS object (faster)
+
     if (!blog) {
       return res.status(404).json({ message: 'Blog not found' });
     }
+
     res.json(blog);
   } catch (error) {
-    res.status(500).json({ message: 'Server Error' });
+    console.error('Get Blog By Slug Error:', error);
+    res.status(500).json({
+      message: 'Server Error',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
   }
 };
+
 
 // @desc    Create blog manually (User)
 // @route   POST /api/blogs
@@ -161,46 +179,85 @@ const createAgentBlog = async (req, res) => {
 
 const getBlogStats = async (req, res) => {
   try {
-    const totalBlogs = await Blog.countDocuments();
-    const blogs = await Blog.find({}, 'title likes dislikes comments');
+    // Run all queries in parallel for better performance
+    const [totalBlogs, blogStats, commentCounts] = await Promise.all([
+      Blog.countDocuments(),
+      Blog.aggregate([
+        {
+          $project: {
+            title: 1,
+            likes: { $size: { $ifNull: ["$likes", []] } },
+            dislikes: { $size: { $ifNull: ["$dislikes", []] } }
+          }
+        },
+        { $sort: { likes: -1 } }
+      ]),
+      Comment.aggregate([
+        { $group: { _id: '$blog', comments: { $sum: 1 } } }
+      ])
+    ]);
 
-    const detailedStats = blogs.map(b => ({
-      id: b._id,
-      title: b.title,
-      likes: b.likes.length,
-      dislikes: b.dislikes.length,
-      comments: b.comments.length
-    })).sort((a, b) => b.likes - a.likes);
+    // Merge comment counts into blog stats
+    const commentMap = {};
+    commentCounts.forEach(c => { commentMap[c._id.toString()] = c.comments; });
+    const detailedStats = blogStats.map(b => ({
+      ...b,
+      comments: commentMap[b._id.toString()] || 0
+    }));
 
     res.json({ totalBlogs, detailedStats });
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching stats' });
+    console.error('Error fetching blog stats:', error);
+    res.status(500).json({
+      message: 'Error fetching stats',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
   }
 };
+
 
 const likeBlog = async (req, res) => {
   try {
     const blog = await Blog.findById(req.params.id);
-    if (!blog) return res.status(404).json({ message: 'Blog not found' });
+    if (!blog) {
+      return res.status(404).json({ message: 'Blog not found' });
+    }
 
-    const userId = req.user._id;
+    const userId = req.user._id.toString();
 
-    // Remote from dislikes if present
-    blog.dislikes = blog.dislikes.filter(id => id.toString() !== userId.toString());
+    // Remove from dislikes (if exists)
+    blog.dislikes = blog.dislikes.filter(
+      id => id.toString() !== userId
+    );
 
-    if (blog.likes.includes(userId)) {
-      // Toggle off
-      blog.likes = blog.likes.filter(id => id.toString() !== userId.toString());
+    const alreadyLiked = blog.likes.some(
+      id => id.toString() === userId
+    );
+
+    if (alreadyLiked) {
+      // Toggle off (Unlike)
+      blog.likes = blog.likes.filter(
+        id => id.toString() !== userId
+      );
     } else {
-      blog.likes.push(userId);
+      blog.likes.push(req.user._id);
     }
 
     await blog.save();
-    res.json(blog);
+
+    return res.status(200).json({
+      message: alreadyLiked ? "Blog unliked" : "Blog liked",
+      likesCount: blog.likes.length,
+      dislikesCount: blog.dislikes.length,
+      blog
+    });
+
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Like Blog Error:", error);
+    return res.status(500).json({ message: "Server error" });
   }
 };
+
 
 const dislikeBlog = async (req, res) => {
   try {
@@ -239,7 +296,11 @@ const deleteBlog = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to delete this blog' });
     }
 
-    await Blog.deleteOne({ _id: req.params.id });
+    // Delete blog and all its comments
+    await Promise.all([
+      Blog.deleteOne({ _id: req.params.id }),
+      Comment.deleteMany({ blog: req.params.id })
+    ]);
 
     // Clear blog list cache
     await redisClient.del(CACHE_KEY).catch(console.error);
@@ -256,32 +317,36 @@ const getUserActivity = async (req, res) => {
     const username = req.user.username;
     const userId = req.user._id;
 
-    // Fetch user's own posts
-    const ownPosts = await Blog.find({ author: username }).sort({ createdAt: -1 });
+    // Fetch user's own posts, liked posts, disliked posts, and comments in parallel
+    const [ownPosts, likedPosts, dislikedPosts, comments] = await Promise.all([
+      Blog.find({ author: username }).sort({ createdAt: -1 }),
+      Blog.find({ likes: userId }).sort({ createdAt: -1 }),
+      Blog.find({ dislikes: userId }).sort({ createdAt: -1 }),
+      Comment.find({ user: userId })
+        .populate('blog', 'title slug')
+        .sort({ createdAt: -1 })
+    ]);
 
-    // Fetch liked posts
-    const likedPosts = await Blog.find({ likes: userId }).sort({ createdAt: -1 });
-
-    // Fetch disliked posts
-    const dislikedPosts = await Blog.find({ dislikes: userId }).sort({ createdAt: -1 });
-
-    // Fetch blogs where user has commented
-    const blogsWithUserComments = await Blog.find({
-      'comments.user': userId
-    }).sort({ updatedAt: -1 });
-
-    const userComments = blogsWithUserComments.map(blog => ({
-      _id: blog._id,
-      blogTitle: blog.title,
-      blogSlug: blog.slug,
-      comments: blog.comments
-        .filter(c => c.user.toString() === userId.toString())
-        .map(c => ({
-          _id: c._id,
-          text: c.text,
-          date: c.date
-        }))
-    }));
+    // Group comments by blog
+    const blogMap = {};
+    comments.forEach(c => {
+      if (!c.blog) return; // blog may have been deleted
+      const blogId = c.blog._id.toString();
+      if (!blogMap[blogId]) {
+        blogMap[blogId] = {
+          _id: blogId,
+          blogTitle: c.blog.title,
+          blogSlug: c.blog.slug,
+          comments: []
+        };
+      }
+      blogMap[blogId].comments.push({
+        _id: c._id,
+        text: c.text,
+        date: c.date
+      });
+    });
+    const userComments = Object.values(blogMap);
 
     res.json({ ownPosts, likedPosts, dislikedPosts, userComments });
   } catch (error) {
@@ -298,16 +363,27 @@ const addComment = async (req, res) => {
     const blog = await Blog.findById(req.params.id);
     if (!blog) return res.status(404).json({ message: 'Blog not found' });
 
-    const comment = {
+    const comment = await Comment.create({
+      blog: req.params.id,
       user: req.user._id,
       username: req.user.username,
-      text,
-      date: new Date()
-    };
+      text
+    });
 
-    blog.comments.push(comment);
-    await blog.save();
-    res.status(201).json(blog);
+    res.status(201).json(comment);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get comments for a blog
+// @route   GET /api/blogs/:id/comments
+// @access  Public
+const getComments = async (req, res) => {
+  try {
+    const comments = await Comment.find({ blog: req.params.id })
+      .sort({ createdAt: -1 });
+    res.json(comments);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -315,9 +391,9 @@ const addComment = async (req, res) => {
 
 const triggerAgentBlog = async (req, res) => {
   const { topic } = req.body;
-  const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://agent-service:8000';
+  const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://127.0.0.1:8000';
 
-  console.log(`🚀 Triggering Agent for topic: ${topic || 'Trending AI News'}`);
+  console.log(`🚀 Triggering Agent for topic: ${topic || 'Trending AI News'} using URL: ${AGENT_SERVICE_URL}`);
 
   try {
     // Send background request to agent service
@@ -356,15 +432,15 @@ const getAgentStatus = async (req, res) => {
 };
 
 const triggerRAGIndexing = async (blogId, text) => {
-  const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://agent-service:8000';
+  const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://127.0.0.1:8000';
 
   console.log(`🧠 Requesting RAG indexing for blog ${blogId} from microservice...`);
 
   try {
     const { data } = await axios.post(`${AGENT_SERVICE_URL}/index`, { blog_id: blogId, text });
-    if (data.rag_data) {
-      await Blog.findByIdAndUpdate(blogId, { ragData: data.rag_data });
-      console.log(`✅ Blog ${blogId} indexed successfully via microservice.`);
+    if (data.success) {
+      await Blog.findByIdAndUpdate(blogId, { ragIndexed: true });
+      console.log(`✅ Blog ${blogId} indexed in Qdrant successfully.`);
     }
   } catch (err) {
     console.error('Failed to index blog via microservice:', err.message);
@@ -373,27 +449,59 @@ const triggerRAGIndexing = async (blogId, text) => {
 
 const askQuestion = async (req, res) => {
   try {
+    console.log(`DEBUG: askQuestion called with ID: ${req.params.id}`);
+
+    // Validate ObjectId to prevent CastError
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'Invalid blog ID format' });
+    }
+
     const blog = await Blog.findById(req.params.id);
     if (!blog) return res.status(404).json({ message: 'Blog not found' });
-    if (!blog.ragData || blog.ragData.length === 0) {
+    if (!blog.ragIndexed) {
       return res.status(400).json({ message: 'AI is still processing this blog. Please try again in a moment.' });
     }
 
     const { question } = req.body;
-    const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://agent-service:8000';
+    const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://127.0.0.1:8000';
 
-    console.log(`🤖 Requesting AI Answer for blog ${req.params.id} from microservice...`);
+    console.log(`🤖 Requesting AI Answer for blog ${req.params.id}...`);
 
-    const { data } = await axios.post(`${AGENT_SERVICE_URL}/query`, {
-      blog_id: req.params.id,
-      rag_data: blog.ragData,
-      question
-    });
+    try {
+      // Try agent microservice first (Docker / production)
+      const { data } = await axios.post(`${AGENT_SERVICE_URL}/query`, {
+        blog_id: req.params.id,
+        question
+      }, { timeout: 30000 });
+      return res.json({ answer: data.answer });
+    } catch (serviceErr) {
+      // Fallback to local Python script (local dev)
+      console.log('Agent service unreachable, falling back to local rag_service.py...');
+      const { spawn } = require('child_process');
+      const path = require('path');
+      const scriptPath = path.join(__dirname, '..', 'scripts', 'rag_service.py');
 
-    res.json({ answer: data.answer });
+      const input = JSON.stringify({ blog_id: req.params.id, question });
+      const py = spawn('python', [scriptPath, 'query'], { env: { ...process.env } });
+
+      let output = '';
+      let errOutput = '';
+      py.stdin.write(input);
+      py.stdin.end();
+      py.stdout.on('data', (d) => output += d.toString());
+      py.stderr.on('data', (d) => errOutput += d.toString());
+
+      py.on('close', (code) => {
+        if (code !== 0) {
+          console.error('Python RAG error:', errOutput);
+          return res.status(500).json({ message: 'AI failed to answer question' });
+        }
+        res.json({ answer: output.trim() });
+      });
+    }
   } catch (error) {
     console.error('AI Query Error:', error.message);
-    res.status(500).json({ message: 'AI failed to answer question via microservice' });
+    res.status(500).json({ message: 'AI failed to answer question' });
   }
 };
 
@@ -409,6 +517,7 @@ module.exports = {
   likeBlog,
   dislikeBlog,
   addComment,
+  getComments,
   deleteBlog,
   askQuestion,
   getUserActivity

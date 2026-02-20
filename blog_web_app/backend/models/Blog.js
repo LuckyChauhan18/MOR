@@ -46,29 +46,8 @@ const blogSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }],
-  comments: [{
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true
-    },
-    username: {
-      type: String,
-      required: true
-    },
-    text: {
-      type: String,
-      required: true
-    },
-    date: {
-      type: Date,
-      default: Date.now
-    }
-  }],
-  ragData: [{
-    text: { type: String, required: true },
-    embedding: { type: [Number], required: true }
-  }]
+
+  ragIndexed: { type: Boolean, default: false }
 }, { timestamps: true });
 
 // Pre-save middleware to generate slug

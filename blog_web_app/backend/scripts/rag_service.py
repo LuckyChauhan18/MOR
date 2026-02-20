@@ -1,14 +1,26 @@
 import os
 import sys
 import json
+import uuid
 import numpy as np
+
+print("DEBUG: rag_service.py VERSION: 2026-02-19-V2 (query_points)", file=sys.stderr)
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.messages import SystemMessage, HumanMessage
+import requests
+from qdrant_client import QdrantClient, models
+from qdrant_client.models import (
+    VectorParams, Distance, PointStruct,
+    Filter, FieldCondition, MatchValue
+)
 
 # Load env from parent backend folder
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+
+QDRANT_COLLECTION = "blog_embeddings"
+VECTOR_SIZE = 1536
 
 def get_embeddings():
     return OpenAIEmbeddings(
@@ -25,7 +37,30 @@ def get_llm():
         temperature=0
     )
 
-def index_blog(text):
+def get_qdrant_client():
+    url = os.getenv("QDRANT_URL")
+    # Clean URL: strip trailing slashes and /dashboard
+    url = url.rstrip('/')
+    if url.endswith('/dashboard'):
+        url = url[:-10]
+    
+    return QdrantClient(
+        url=url,
+        api_key=os.getenv("QDRANT_API_KEY"),
+    )
+
+def ensure_collection():
+    client = get_qdrant_client()
+    collections = [c.name for c in client.get_collections().collections]
+    if QDRANT_COLLECTION not in collections:
+        client.create_collection(
+            collection_name=QDRANT_COLLECTION,
+            vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
+        )
+        print(f"Created Qdrant collection '{QDRANT_COLLECTION}'")
+    return client
+
+def index_blog(text, blog_id):
     if not text.strip():
         return []
     splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=150)
@@ -37,33 +72,87 @@ def index_blog(text):
     embeddings_model = get_embeddings()
     embeddings = embeddings_model.embed_documents(chunks)
     
-    rag_data = []
+    client = ensure_collection()
+    
+    # Delete old vectors for this blog
+    try:
+        client.delete(
+            collection_name=QDRANT_COLLECTION,
+            points_selector=Filter(
+                must=[FieldCondition(key="blog_id", match=MatchValue(value=blog_id))]
+            )
+        )
+    except Exception:
+        pass
+    
+    points = []
     for i, chunk in enumerate(chunks):
-        rag_data.append({
-            "text": chunk,
-            "embedding": embeddings[i]
-        })
-    return rag_data
+        point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{blog_id}_{i}"))
+        points.append(PointStruct(
+            id=point_id,
+            vector=embeddings[i],
+            payload={"blog_id": blog_id, "text": chunk, "chunk_index": i}
+        ))
+    
+    client.upsert(collection_name=QDRANT_COLLECTION, points=points)
+    print(f"Indexed {len(points)} chunks to Qdrant for blog {blog_id}")
+    return [{"text": chunk} for chunk in chunks]
 
-def query_blog(rag_data, question):
-    if not rag_data:
+def query_blog(blog_id, question):
+    print(f"DEBUG: Querying blog {blog_id} with question: {question}", file=sys.stderr)
+    if not blog_id:
         return "No information available for this blog."
         
+    print("DEBUG: Getting embeddings...", file=sys.stderr)
     embeddings_model = get_embeddings()
-    query_vector = embeddings_model.embed_query(question)
+    try:
+        query_vector = embeddings_model.embed_query(question)
+        print(f"DEBUG: Got query vector (type={type(query_vector)}, len={len(query_vector)})", file=sys.stderr)
+        if hasattr(query_vector, 'tolist'):
+            print("DEBUG: Converting query_vector to list", file=sys.stderr)
+            query_vector = query_vector.tolist()
+    except Exception as e:
+        print(f"DEBUG: Embedding failed (Check OPENROUTER_API_KEY): {e}", file=sys.stderr)
+        raise e
     
-    # Simple cosine similarity search
-    results = []
-    for item in rag_data:
-        doc_vector = np.array(item['embedding'])
-        q_vector = np.array(query_vector)
-        similarity = np.dot(doc_vector, q_vector) / (np.linalg.norm(doc_vector) * np.linalg.norm(q_vector))
-        results.append((item['text'], similarity))
-    
-    # Sort by similarity and take top 8 (Increased from 4)
-    results.sort(key=lambda x: x[1], reverse=True)
-    top_chunks = results[:8]
-    context = "\n\n".join([r[0] for r in top_chunks])
+    try:
+        print("DEBUG: searching Qdrant using query_points API...", file=sys.stderr)
+        client = get_qdrant_client()
+        
+        # Using query_points as this version of qdrant-client lacks 'search'
+        search_results = client.query_points(
+            collection_name=QDRANT_COLLECTION,
+            query=query_vector,
+            query_filter=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="blog_id",
+                        match=models.MatchValue(value=blog_id)
+                    )
+                ]
+            ),
+            limit=8
+        )
+        
+        # query_points returns a objects with .points attribute
+        points = search_results.points
+        print(f"DEBUG: Found {len(points)} points", file=sys.stderr)
+        top_chunks = [hit.payload["text"] for hit in points]
+        
+        if not top_chunks:
+            return "No information available for this blog."
+            
+        context = "\n\n".join(top_chunks)
+    except Exception as e:
+        print(f"DEBUG: Qdrant search failed: {e}", file=sys.stderr)
+        # Try to extract the response if it's a qdrant_client exception
+        try:
+            from qdrant_client.http.exceptions import UnexpectedResponse
+            if isinstance(e, UnexpectedResponse):
+                print(f"DEBUG: Qdrant Error Content: {e.content}", file=sys.stderr)
+        except:
+            pass
+        raise e
     
     llm = get_llm()
     RAG_SYSTEM = """
@@ -90,13 +179,14 @@ if __name__ == "__main__":
         
     mode = sys.argv[1]
     if mode == "index":
-        if len(sys.argv) > 2 and sys.argv[2] == "--file":
-            with open(sys.argv[3], 'r', encoding='utf-8') as f:
+        blog_id = sys.argv[2] if len(sys.argv) > 2 else "unknown"
+        if len(sys.argv) > 3 and sys.argv[3] == "--file":
+            with open(sys.argv[4], 'r', encoding='utf-8') as f:
                 text = f.read()
         else:
-            # Read text from stdin
             text = sys.stdin.read()
-        print(json.dumps(index_blog(text)))
+        result = index_blog(text, blog_id)
+        print(json.dumps({"success": True, "chunks": len(result)}))
     elif mode == "query":
         if len(sys.argv) > 2 and sys.argv[2] == "--file":
             with open(sys.argv[3], 'r', encoding='utf-8') as f:
@@ -104,6 +194,6 @@ if __name__ == "__main__":
         else:
             input_data = json.loads(sys.stdin.read())
             
-        rag_data = input_data['rag_data']
+        blog_id = input_data['blog_id']
         question = input_data['question']
-        print(query_blog(rag_data, question))
+        print(query_blog(blog_id, question))

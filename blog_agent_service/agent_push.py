@@ -5,6 +5,11 @@ import requests
 from pathlib import Path
 from dotenv import load_dotenv
 import sys
+import io
+
+# Fix for Windows console encoding issues
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 # Setup paths
 SERVICE_DIR = Path(__file__).resolve().parent
@@ -101,6 +106,12 @@ def generate_and_push(topic):
         content = final_state.get("final")
         plan = final_state.get("plan")
         
+        # Extract images if any
+        image_specs = final_state.get("image_specs", [])
+        banner_image_url = ""
+        if image_specs:
+            banner_image_url = f"images/{image_specs[0]['filename']}"
+
         if not content:
             print("❌ Agent failed to generate content.")
             report_status("error", "Generation Failed")
@@ -136,13 +147,28 @@ def generate_and_push(topic):
             "categories": assigned_categories,
             "author": "AI Expert Agent",
             "date": current_date,
-            "banner_image_url": "" 
+            "banner_image_url": banner_image_url 
         }
         
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)
             
         print(f"✅ Blog saved locally: {md_path}")
+
+        # 4b. Copy images to backend
+        if image_specs:
+            banner_img = banner_image_url
+            if banner_img and banner_img.startswith("images/"):
+                img_name = banner_img.split("/")[-1]
+                src_path = SERVICE_DIR / "images" / img_name
+                # Try to copy to backend's images folder
+                dest_dir = SERVICE_DIR.parent / "blog_web_app" / "backend" / "images"
+                if src_path.exists() and dest_dir.exists():
+                    import shutil
+                    shutil.copy(src_path, dest_dir / img_name)
+                    print(f"🖼️ Copied banner image to backend: {img_name}")
+                elif not dest_dir.exists():
+                    print(f"⚠️ Warning: Backend images directory not found at {dest_dir}")
 
         # 5. Push to Web App
         WEB_APP_URL = os.getenv("WEB_APP_URL", "http://localhost:5000/api/blogs/agent")
@@ -153,7 +179,8 @@ def generate_and_push(topic):
             "content": content,
             "categories": assigned_categories,
             "author": "AI Expert Agent",
-            "date": current_date
+            "date": current_date,
+            "bannerImage": banner_image_url
         }
 
         headers = {

@@ -11,6 +11,7 @@ const BlogDetail = () => {
   const [blog, setBlog] = useState(null);
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState('');
+  const [comments, setComments] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [user, setUser] = useState(null);
   const [showChat, setShowChat] = useState(false);
@@ -36,8 +37,28 @@ const BlogDetail = () => {
     }
   };
 
+  const fetchComments = async (blogId) => {
+    try {
+      const { data } = await api.get(`/blogs/${blogId}/comments`);
+      setComments(data);
+    } catch (err) {
+      console.error('Failed to fetch comments:', err);
+    }
+  };
+
   useEffect(() => {
-    fetchBlog();
+    const loadBlog = async () => {
+      try {
+        const { data } = await api.get(`/blogs/${slug}`);
+        setBlog(data);
+        setLoading(false);
+        fetchComments(data._id);
+      } catch (err) {
+        console.error(err);
+        setLoading(false);
+      }
+    };
+    loadBlog();
     window.scrollTo(0, 0);
 
     const handleScroll = () => {
@@ -74,9 +95,9 @@ const BlogDetail = () => {
     if (!commentText.trim()) return;
     setSubmitting(true);
     try {
-      const { data } = await api.post(`/blogs/${blog._id}/comment`, { text: commentText });
-      setBlog(data);
+      await api.post(`/blogs/${blog._id}/comment`, { text: commentText });
       setCommentText('');
+      fetchComments(blog._id);
     } catch (err) {
       console.error(err);
     } finally {
@@ -121,7 +142,7 @@ const BlogDetail = () => {
 
       <motion.div
         className="container"
-        style={{ paddingTop: '120px', paddingBottom: '100px', maxWidth: '850px' }}
+        style={{ paddingTop: '100px', paddingBottom: '60px', maxWidth: '850px', padding: '100px 1rem 60px' }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
       >
@@ -137,14 +158,14 @@ const BlogDetail = () => {
               </span>
             ))}
           </div>
-          <h1 className="text-gradient" style={{ fontSize: '3.5rem', lineHeight: '1.1', marginBottom: '25px', fontWeight: '800' }}>{blog.title}</h1>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', borderBottom: '1px solid var(--glass-border)', paddingBottom: '25px' }}>
-            <div style={{ display: 'flex', gap: '25px' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem' }}><Calendar size={18} /> {new Date(blog.date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem' }}><User size={18} /> {blog.author}</span>
+          <h1 className="text-gradient" style={{ fontSize: 'clamp(1.8rem, 5vw, 3.5rem)', lineHeight: '1.1', marginBottom: '20px', fontWeight: '800' }}>{blog.title}</h1>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', borderBottom: '1px solid var(--glass-border)', paddingBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}><Calendar size={16} /> {new Date(blog.date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}><User size={16} /> {blog.author}</span>
             </div>
-            <button onClick={handleShare} style={{ background: 'var(--glass)', border: '1px solid var(--glass-border)', color: 'white', padding: '8px 16px', borderRadius: '10px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Sparkles size={16} /> Share Post
+            <button onClick={handleShare} style={{ background: 'var(--glass)', border: '1px solid var(--glass-border)', color: 'white', padding: '8px 14px', borderRadius: '10px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+              <Sparkles size={14} /> Share
             </button>
           </div>
         </header>
@@ -153,17 +174,17 @@ const BlogDetail = () => {
           <motion.div
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            style={{ width: '100%', borderRadius: '24px', overflow: 'hidden', marginBottom: '60px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', height: '450px' }}
+            style={{ width: '100%', borderRadius: '16px', overflow: 'hidden', marginBottom: '40px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', maxHeight: '450px' }}
           >
             <img src={blog.bannerImage} alt={blog.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </motion.div>
         )}
 
-        <article className="markdown-content" style={{ fontSize: '1.2rem', marginBottom: '60px' }}>
+        <article className="markdown-content" style={{ fontSize: 'clamp(1rem, 2.5vw, 1.2rem)', marginBottom: '40px' }}>
           <ReactMarkdown>{blog.content}</ReactMarkdown>
         </article>
 
-        <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '80px', padding: '30px', background: 'var(--glass)', borderRadius: '24px', border: '1px solid var(--glass-border)', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '50px', padding: '20px', background: 'var(--glass)', borderRadius: '16px', border: '1px solid var(--glass-border)', justifyContent: 'space-between', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: '20px' }}>
             <motion.button
               onClick={() => handleEngagement('like')}
@@ -207,7 +228,7 @@ const BlogDetail = () => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1.1rem', fontWeight: '600' }}>
-            <MessageSquare size={22} className="primary-text" /> {blog.comments?.length || 0} Comments
+            <MessageSquare size={22} className="primary-text" /> {comments.length} Comments
           </div>
         </div>
 
@@ -246,9 +267,9 @@ const BlogDetail = () => {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <AnimatePresence>
-              {blog.comments && blog.comments.map((comment, index) => (
+              {comments.map((comment, index) => (
                 <motion.div
-                  key={index}
+                  key={comment._id || index}
                   className="glass"
                   style={{ padding: '20px', borderRadius: '16px' }}
                   initial={{ opacity: 0, x: -20 }}
@@ -263,7 +284,7 @@ const BlogDetail = () => {
                 </motion.div>
               ))}
             </AnimatePresence>
-            {(!blog.comments || blog.comments.length === 0) && (
+            {comments.length === 0 && (
               <p style={{ textAlign: 'center', color: 'var(--text-muted)', paddingTop: '20px' }}>No comments yet. Be the first to start the discussion!</p>
             )}
           </div>
@@ -284,8 +305,8 @@ const BlogDetail = () => {
             position: 'fixed',
             bottom: '30px',
             right: '30px',
-            width: '60px',
-            height: '60px',
+            width: '52px',
+            height: '52px',
             borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
@@ -322,7 +343,7 @@ const BlogDetail = () => {
                   position: 'fixed',
                   top: 0,
                   right: 0,
-                  width: '400px',
+                  width: 'min(400px, 100vw)',
                   height: '100vh',
                   background: 'rgba(15, 12, 41, 0.95)',
                   backdropFilter: 'blur(20px)',

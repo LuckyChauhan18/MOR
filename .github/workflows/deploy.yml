@@ -1,14 +1,42 @@
-name: Deployment Pipeline
+name: Production CI/CD Pipeline
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  test:
-    name: Test Stage
+  agent-check:
+    name: Agent Service Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Agent Dependencies
+        working-directory: ./blog_agent_service
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Agent Verification
+        working-directory: ./blog_agent_service
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          AGENT_SECRET_KEY: ${{ secrets.AGENT_SECRET_KEY }}
+        run: |
+          export PYTHONPATH=$PYTHONPATH:.
+          python ../tests/agent/verify_modular_agent.py
+
+  backend-check:
+    name: Backend Service Validation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,50 +52,31 @@ jobs:
         working-directory: ./blog_web_app/backend
         run: npm install
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-          cache: 'pip'
-
-      - name: Install Agent Dependencies
-        working-directory: ./blog_agent_service
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run Agent Verification Test
-        working-directory: ./blog_agent_service
-        env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          AGENT_SECRET_KEY: ${{ secrets.AGENT_SECRET_KEY }}
-        run: python verify_modular_agent.py
-
-  build:
-    name: Build Stage
-    needs: test
+  docker-validate:
+    name: Docker Environment Check
+    needs: [agent-check, backend-check]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create Dummy Env Files for Validation
+      - name: Create Mock Env Files
         run: |
           touch ./blog_web_app/backend/.env
           touch ./blog_web_app/frontend/.env
           touch ./blog_agent_service/.env
 
-      - name: Docker Compose Build Check
+      - name: Validate Docker Compose Config
         run: docker compose -f ./blog_web_app/docker-compose.yml config
 
-  deploy:
-    name: Deploy Stage
-    needs: build
+  deploy-to-prod:
+    name: Production Deployment
+    needs: docker-validate
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy to AWS EC2
+      - name: Execute SSH Deployment
         uses: appleboy/ssh-action@v1.0.3
         env:
           PROD_ENV_BACKEND: ${{ secrets.PROD_ENV_BACKEND || vars.PROD_ENV_BACKEND }}
@@ -82,9 +91,8 @@ jobs:
           script: |
             set -e
             cd ~/MOR/blog_web_app
-            echo "Current directory: $(pwd)"
             
-            echo "Ensuring Swap Space (Preventing memory hangs)..."
+            echo "Ensuring Swap Space..."
             if [ ! -f /swapfile ]; then
               sudo fallocate -l 2G /swapfile
               sudo chmod 600 /swapfile
@@ -93,34 +101,15 @@ jobs:
               echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
             fi
             
-            echo "Pulling latest code from GitHub..."
+            echo "Pulling latest code..."
             git pull origin main
             
-            echo "Writing environment variables..."
-            # Using shell variables passed via 'envs'
+            echo "Writing .env files..."
             printf "%s" "$PROD_ENV_BACKEND" > backend/.env
             printf "%s" "$PROD_ENV_FRONTEND" > frontend/.env
             printf "%s" "$PROD_ENV_AGENT" > ../blog_agent_service/.env
             
-            echo "Restarting Docker containers with sudo..."
+            echo "Rebuilding and restarting containers..."
             sudo docker compose up -d --build
             
-            echo "Waiting for services to start..."
-            sleep 10
-            
-            echo "--- Container Status ---"
-            sudo docker compose ps
-            
-            echo "--- Backend Logs (Diagnosing 502) ---"
-            sudo docker compose logs --tail=20 backend
-            
-            echo "--- Redis Connectivity Test ---"
-            # Try to ping the Redis host from the server
-            REDIS_HOST=$(echo $REDIS_URL | sed -e 's|.*@||' -e 's|:.*||')
-            REDIS_PORT=$(echo $REDIS_URL | sed -e 's|.*:||')
-            echo "Testing connection to $REDIS_HOST on port $REDIS_PORT..."
-            if nc -zv -w 5 $REDIS_HOST $REDIS_PORT; then
-              echo "✅ Network connection to Redis Cloud is SUCCESSFUL."
-            else
-              echo "❌ Network connection to Redis Cloud FAILED. Please check AWS Security Group Outbound rules."
-            fi
+            echo "Deployment successful."

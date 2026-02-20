@@ -56,6 +56,18 @@ def push_blogs():
                 "bannerImage": metadata.get("banner_image_url")
             }
 
+            # Optional: Copy images to backend if running locally
+            banner_img = metadata.get("banner_image_url")
+            if banner_img and banner_img.startswith("images/"):
+                img_name = banner_img.split("/")[-1]
+                src_path = project_root / "images" / img_name
+                # Try to copy to backend's images folder
+                dest_dir = project_root.parent / "blog_web_app" / "backend" / "images"
+                if src_path.exists() and dest_dir.exists():
+                    import shutil
+                    shutil.copy(src_path, dest_dir / img_name)
+                    print(f"🖼️ Copied image to backend: {img_name}")
+
             headers = {
                 "x-agent-key": AGENT_SECRET_KEY,
                 "Content-Type": "application/json"

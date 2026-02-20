@@ -60,7 +60,9 @@ def decide_images(state: State) -> dict:
         ]
     )
 
-    print("🧠 IMAGE SPECS:", image_plan.images)
+    print(f"🧠 IMAGE SPECS ({len(image_plan.images)}):", [img.placeholder for img in image_plan.images])
+    if "[[IMAGE_" not in image_plan.md_with_placeholders:
+        print("⚠️ WARNING: No placeholders found in md_with_placeholders!")
 
     return {
         "md_with_placeholders": image_plan.md_with_placeholders,
@@ -68,35 +70,11 @@ def decide_images(state: State) -> dict:
     }
 
 
-def _gemini_generate_image_bytes(prompt: str) -> bytes:
+def _generate_image_bytes(prompt: str) -> bytes:
     """
-    Generates image bytes using Gemini Imagen.
-    Requires:
-      pip install google-genai
-      env: GOOGLE_API_KEY
+    [DISABLED] Generates image bytes using Pollinations.ai (stable fallback).
     """
-    from google import genai
-    from google.genai import types
-    import base64
-
-    client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
-
-    result = client.models.generate_images(
-        model="imagen-3.0-generate-001",
-        prompt=prompt,
-        config=types.GenerateImagesConfig(
-            number_of_images=1,
-            aspect_ratio="16:9",
-            safety_filter_level="BLOCK_ONLY_HIGH",
-        ),
-    )
-
-    if not result.images:
-        raise RuntimeError("No image returned by Imagen")
-
-    # Imagen returns base64
-    image_base64 = result.images[0].image_bytes
-    return base64.b64decode(image_base64)
+    return b""
 
 
 def _safe_slug(title: str) -> str:
@@ -107,50 +85,27 @@ def _safe_slug(title: str) -> str:
 
 
 def generate_and_place_images(state: State) -> dict:
+    """
+    [V2 Feature] Currently disabled as per user request.
+    Only writes the merged markdown to the outputs directory.
+    """
     plan = state["plan"]
     assert plan is not None
 
     md = state.get("md_with_placeholders") or state["merged_md"]
-    image_specs = state.get("image_specs", []) or []
+    
+    # Use absolute paths
+    base_dir = Path(__file__).resolve().parent.parent.parent
+    output_dir = base_dir / "outputs"
+    output_dir.mkdir(exist_ok=True)
 
-    # If no images requested, just write merged markdown
-    if not image_specs:
-        filename = f"{_safe_slug(plan.blog_title)}.md"
-        # Saving relative to CWD, which is likely project root
-        output_dir = Path("outputs")
-        output_dir.mkdir(exist_ok=True)
-        (output_dir / filename).write_text(md, encoding="utf-8")
-        return {"final": md}
+    print("🚫 Image generation is disabled at this time.")
 
-    images_dir = Path("images")
-    images_dir.mkdir(exist_ok=True)
-
-    for spec in image_specs:
-        placeholder = spec["placeholder"]
-        filename = spec["filename"]
-        out_path = images_dir / filename
-
-        # generate only if needed
-        if not out_path.exists():
-            try:
-                img_bytes = _gemini_generate_image_bytes(spec["prompt"])
-                out_path.write_bytes(img_bytes)
-            except Exception as e:
-                # graceful fallback: keep doc usable
-                prompt_block = (
-                    f"> **[IMAGE GENERATION FAILED]** {spec.get('caption','')}\n>\n"
-                    f"> **Alt:** {spec.get('alt','')}\n>\n"
-                    f"> **Prompt:** {spec.get('prompt','')}\n>\n"
-                    f"> **Error:** {e}\n"
-                )
-                md = md.replace(placeholder, prompt_block)
-                continue
-
-        img_md = f"![{spec['alt']}](images/{filename})\n*{spec['caption']}*"
-        md = md.replace(placeholder, img_md)
+    # Remove any [[IMAGE_X]] placeholders to keep the final doc clean
+    import re
+    md = re.sub(r"\[\[IMAGE_\d+\]\]", "", md)
 
     filename = f"{_safe_slug(plan.blog_title)}.md"
-    output_dir = Path("outputs")
-    output_dir.mkdir(exist_ok=True)
     (output_dir / filename).write_text(md, encoding="utf-8")
-    return {"final": md}
+    
+    return {"final": md, "image_specs": []}

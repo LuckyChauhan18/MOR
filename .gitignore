@@ -23,6 +23,7 @@ yarn-error.log*
 logs/
 *.log
 **/*.log
+blog_agent_service/logs/
 
 # Python
 __pycache__/
@@ -44,17 +45,21 @@ coverage.xml
 .mypy_cache/
 .pytest_cache/
 
+# Tests and Debug
+tests/
+debug/
+documents/
+extra/
+blog_agent_service/logs/
+blog_web_app/backend/logs/
+
 # AI / RAG Data (Temporary)
 **/backend/data/
-**/scripts/temp_*
-**/scripts/query_*
-**/*.json
-**/*.txt
-!package.json
-!package-lock.json
-!manifest.json
+blog_agent_service/images/
+blog_agent_service/outputs/
 !blog_agent_service/requirements.txt
 !blog_agent_service/requirements.docker.txt
+!**/*_metadata.json
 
 # System Files
 .DS_Store
@@ -65,9 +70,11 @@ Thumbs.db
 *.swo
 *.bak
 *.tmp
-.project
-.classpath
-.settings/
+*.project
+*.classpath
+*.settings/
 
-# Testing
-coverage/
+# RSA / Keys
+*.pem
+
+extra/

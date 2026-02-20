@@ -7,8 +7,16 @@ dotenv.config();
 
 const authRoutes = require('./routes/authRoutes');
 const blogRoutes = require('./routes/blogRoutes');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./swagger');
 
 const app = express();
+
+// Swagger API Docs
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'MOR Blog API Docs',
+}));
 
 // Middleware
 const allowedOrigins = [
@@ -30,6 +38,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+app.use('/images', express.static(path.join(__dirname, 'images')));
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -56,7 +65,7 @@ const PORT = process.env.PORT || 5000;
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('MongoDB Connected');
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
   })
   .catch(err => {
     console.error('Database connection error:', err);

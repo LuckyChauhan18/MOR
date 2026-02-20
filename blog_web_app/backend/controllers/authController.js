@@ -30,8 +30,9 @@ const registerUser = async (req, res) => {
   const hashedPassword = await bcrypt.hash(password, salt);
 
   // Check if this is the first user
-  const userCount = await User.countDocuments({});
-  const role = userCount === 0 ? 'admin' : 'editor';
+  const adminExists = await User.exists({ role: 'admin' });
+  const role = adminExists ? 'editor' : 'admin';
+
 
   const user = await User.create({
     username,

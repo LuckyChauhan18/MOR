@@ -3,15 +3,24 @@ import json
 import hashlib
 import time
 import re
+import uuid
 import numpy as np
 import redis
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.messages import SystemMessage, HumanMessage
+from qdrant_client import QdrantClient
+from qdrant_client.models import (
+    VectorParams, Distance, PointStruct,
+    Filter, FieldCondition, MatchValue
+)
 
 # Load env
 load_dotenv()
+
+QDRANT_COLLECTION = "blog_embeddings"
+VECTOR_SIZE = 1536  # text-embedding-3-small dimension
 
 def get_embeddings():
     return OpenAIEmbeddings(
@@ -29,9 +38,39 @@ def get_llm():
         max_tokens=1000
     )
 
+def get_qdrant_client():
+    """Get a Qdrant Cloud client."""
+    return QdrantClient(
+        url=os.getenv("QDRANT_URL"),
+        api_key=os.getenv("QDRANT_API_KEY"),
+    )
+
+def ensure_collection():
+    """Create the Qdrant collection if it doesn't exist."""
+    client = get_qdrant_client()
+    collections = [c.name for c in client.get_collections().collections]
+    if QDRANT_COLLECTION not in collections:
+        client.create_collection(
+            collection_name=QDRANT_COLLECTION,
+            vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
+        )
+        print(f"DEBUG: Created Qdrant collection '{QDRANT_COLLECTION}'")
+        
+        # Ensure payload index for filtering
+        try:
+            from qdrant_client.models import PayloadSchemaType
+            client.create_payload_index(
+                collection_name=QDRANT_COLLECTION,
+                field_name="blog_id",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+            print(f"DEBUG: Created payload index for 'blog_id'")
+        except Exception as e:
+            print(f"DEBUG: Failed to create payload index: {e}")
+    return client
+
 def get_redis_client():
     url = os.getenv("REDIS_URL", "redis://localhost:6379")
-    # Log sanitized URL for debugging
     log_url = re.sub(r':([^:@]+)@', ':****@', url)
     print(f"DEBUG: Connecting to Redis at {log_url}")
     return redis.from_url(url)
@@ -39,9 +78,7 @@ def get_redis_client():
 def normalize_question(q):
     """Normalize question to handle common variations and filler phrases."""
     q = q.lower().strip()
-    # Remove punctuation
     q = re.sub(r'[?.\!]', '', q)
-    # Remove common filler phrases that don't change intent
     fillers = [
         r'\b(what is|what are|tell me|explain|summarize|who is|show me)\b',
         r'\b(of|about|in|on|the|a|an)\b',
@@ -49,7 +86,6 @@ def normalize_question(q):
     ]
     for pattern in fillers:
         q = re.sub(pattern, ' ', q)
-    # Clean up double spaces and strip again after substitutions
     q = re.sub(r'\s+', ' ', q).strip()
     return q
 
@@ -64,7 +100,6 @@ def search_semantic_cache(blog_id, query_vector, threshold=0.9):
             index_name=f"cache:{blog_id}"
         )
         
-        # Search for similar questions by vector (passing positionally to avoid conflicts)
         results = vector_store.similarity_search_with_score_by_vector(
             query_vector,
             k=1
@@ -72,8 +107,6 @@ def search_semantic_cache(blog_id, query_vector, threshold=0.9):
         
         if results:
             doc, score = results[0]
-            # Higher score in some distance metrics means less similar. 
-            # 0.2 is more permissive than 0.1
             if score < 0.2: 
                 return doc.metadata.get("answer")
     except Exception as e:
@@ -83,14 +116,12 @@ def search_semantic_cache(blog_id, query_vector, threshold=0.9):
 def update_semantic_cache(blog_id, question, answer, embedding):
     """Store the question, answer and embedding in Redis with TTL for exact matches."""
     try:
-        # 1. Exact match cache with TTL (2 hours)
         r = get_redis_client()
         question_norm = normalize_question(question)
         question_hash = hashlib.md5(question_norm.encode()).hexdigest()
         kv_cache_key = f"exact_cache:{blog_id}:{question_hash}"
-        r.setex(kv_cache_key, 7200, answer) # TTL = 2 hours
+        r.setex(kv_cache_key, 7200, answer)
 
-        # 2. Semantic cache (Vector Store)
         from langchain_redis import RedisVectorStore
         from langchain_core.documents import Document
         
@@ -110,9 +141,11 @@ def update_semantic_cache(blog_id, question, answer, embedding):
     except Exception as e:
         print(f"Redis Cache Update Error: {e}")
 
-def index_content(text):
+def index_content(text, blog_id):
+    """Split text into chunks, embed them, and upsert into Qdrant."""
     if not text.strip():
         return []
+    
     splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=150)
     chunks = splitter.split_text(text)
     
@@ -122,19 +155,43 @@ def index_content(text):
     embeddings_model = get_embeddings()
     embeddings = embeddings_model.embed_documents(chunks)
     
-    rag_data = []
+    # Upsert to Qdrant
+    client = ensure_collection()
+    
+    # Delete old vectors for this blog first (in case of re-indexing)
+    try:
+        client.delete(
+            collection_name=QDRANT_COLLECTION,
+            points_selector=Filter(
+                must=[FieldCondition(key="blog_id", match=MatchValue(value=blog_id))]
+            )
+        )
+    except Exception:
+        pass  # Collection might not have old data
+    
+    points = []
     for i, chunk in enumerate(chunks):
-        rag_data.append({
-            "text": chunk,
-            "embedding": embeddings[i]
-        })
-    return rag_data
+        point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{blog_id}_{i}"))
+        points.append(PointStruct(
+            id=point_id,
+            vector=embeddings[i],
+            payload={
+                "blog_id": blog_id,
+                "text": chunk,
+                "chunk_index": i
+            }
+        ))
+    
+    client.upsert(collection_name=QDRANT_COLLECTION, points=points)
+    print(f"DEBUG: Indexed {len(points)} chunks to Qdrant for blog {blog_id}")
+    
+    # Return lightweight rag_data (text only, no embeddings) for backward compat
+    return [{"text": chunk} for chunk in chunks]
 
 def get_basic_response(question):
     """Return hardcoded formal responses for basic greetings/questions."""
     q = normalize_question(question)
     
-    # Mapping of variations to formal responses
     responses = {
         "hello": "Greetings! How may I assist you today with information regarding this blog post?",
         "hey": "Greetings! How may I assist you today with information regarding this blog post?",
@@ -148,21 +205,21 @@ def get_basic_response(question):
     return responses.get(q)
 
 def query_content(blog_id, rag_data, question):
-    if not rag_data and not blog_id:
+    """Query blog content using Qdrant vector search instead of in-memory numpy."""
+    if not blog_id:
         return "No information available for this blog."
     
-    # 0. Check for Basic Greetings / Hardcoded Responses
+    # 0. Check for Basic Greetings
     basic_ans = get_basic_response(question)
     if basic_ans:
         print(f"DEBUG: Basic hardcoded response triggered for: {question}")
         return basic_ans
         
     embeddings_model = get_embeddings()
-    # Normalize question: remove fillers, punctuation, etc.
     question_clean = normalize_question(question)
     question_hash = hashlib.md5(question_clean.encode()).hexdigest()
     
-    # 1. Check Exact Match Cache first (with TTL)
+    # 1. Check Exact Match Cache first
     if blog_id:
         try:
             r = get_redis_client()
@@ -174,16 +231,14 @@ def query_content(blog_id, rag_data, question):
         except Exception as e:
             print(f"Redis Exact Cache Error: {e}")
 
-    # 2. Check for Concurrency Lock
+    # 2. Concurrency Lock
     lock_key = f"lock:{blog_id}:{question_hash}"
     if blog_id:
         r = get_redis_client()
         
-        # We loop here to ensure we either get the lock or the answer from someone else
-        for attempt in range(2): # Two main attempts to either wait or acquire
+        for attempt in range(2):
             if r.exists(lock_key):
                 print(f"DEBUG: Concurrent query detected for: {question}. Waiting...")
-                # Poll for the answer to appear in exact_cache (up to 20 seconds)
                 for _ in range(40): 
                     time.sleep(0.5)
                     ans = r.get(kv_cache_key)
@@ -191,22 +246,18 @@ def query_content(blog_id, rag_data, question):
                         print(f"DEBUG: Retrieved answer from concurrent sibling for: {question}")
                         return ans.decode('utf-8')
                     if not r.exists(lock_key):
-                        break # Lock released, let's try to acquire it if answer still missing
+                        break
             
-            # Try to acquire lock (SET IF NOT EXISTS) with 60s TTL
             acquired = r.set(lock_key, "processing", ex=60, nx=True)
             if acquired:
-                break # We have the lock, proceed to LLM
+                break
             else:
-                # Someone else beat us to it in the millisecond between check and set
                 if attempt == 1:
-                    # If we still can't get it, one last check of the cache
                     ans = r.get(kv_cache_key)
                     if ans: return ans.decode('utf-8')
-                    # If still no answer and no lock, we'll proceed for safety, but this shouldn't happen often
                 time.sleep(0.5)
 
-    # 3. Search semantic cache in Redis if no exact hit
+    # 3. Check Semantic Cache in Redis
     query_vector = embeddings_model.embed_query(question)
     try:
         if blog_id:
@@ -215,25 +266,46 @@ def query_content(blog_id, rag_data, question):
                 print(f"DEBUG: Semantic Cache Hit for question: {question}")
                 return cached_answer
 
-        # 4. Fallback: Search similar document in MongoDB (rag_data)
-        print(f"DEBUG: Cache Miss for question: {question}. Performing RAG...")
+        # 4. Search Qdrant for similar chunks
+        print(f"DEBUG: Cache Miss for question: {question}. Performing Qdrant RAG...")
         
-        results = []
-        for item in rag_data:
-            if 'embedding' not in item or not item['embedding']:
-                continue
-            doc_vector = np.array(item['embedding'])
-            q_vector = np.array(query_vector)
+        client = get_qdrant_client()
+        try:
+            search_results = client.query_points(
+                collection_name=QDRANT_COLLECTION,
+                query=query_vector,
+                query_filter=Filter(
+                    must=[FieldCondition(key="blog_id", match=MatchValue(value=blog_id))]
+                ),
+                limit=8
+            )
+            top_chunks = [hit.payload["text"] for hit in search_results.points]
+            print(f"DEBUG: Qdrant query_points success. Found {len(top_chunks)} points.")
+        except Exception as qe:
+            print(f"DEBUG: Qdrant Query Error: {qe}")
+            top_chunks = []
+        
+        if not top_chunks:
+            # Fallback: use rag_data from MongoDB if Qdrant has no data
+            if rag_data:
+                print("DEBUG: Qdrant returned no results, falling back to MongoDB rag_data")
+                results = []
+                for item in rag_data:
+                    if 'embedding' not in item or not item['embedding']:
+                        continue
+                    doc_vector = np.array(item['embedding'])
+                    q_vector = np.array(query_vector)
+                    if doc_vector.shape != q_vector.shape:
+                        continue
+                    similarity = np.dot(doc_vector, q_vector) / (np.linalg.norm(doc_vector) * np.linalg.norm(q_vector))
+                    results.append((item['text'], similarity))
+                results.sort(key=lambda x: x[1], reverse=True)
+                top_chunks = [r[0] for r in results[:8]]
             
-            if doc_vector.shape != q_vector.shape:
-                continue
-                
-            similarity = np.dot(doc_vector, q_vector) / (np.linalg.norm(doc_vector) * np.linalg.norm(q_vector))
-            results.append((item['text'], similarity))
+            if not top_chunks:
+                return "No information available for this blog."
         
-        results.sort(key=lambda x: x[1], reverse=True)
-        top_chunks = results[:8]
-        context = "\n\n".join([r[0] for r in top_chunks])
+        context = "\n\n".join(top_chunks)
         
         llm = get_llm()
         RAG_SYSTEM = """
@@ -253,7 +325,7 @@ def query_content(blog_id, rag_data, question):
         
         answer = response.content
         
-        # 5. Update Redis cache with the new answer
+        # 5. Update Redis cache
         if blog_id:
             update_semantic_cache(blog_id, question, answer, query_vector)
             
@@ -262,6 +334,6 @@ def query_content(blog_id, rag_data, question):
         if blog_id:
             try:
                 r = get_redis_client()
-                r.delete(lock_key) # Always release lock
+                r.delete(lock_key)
             except:
                 pass

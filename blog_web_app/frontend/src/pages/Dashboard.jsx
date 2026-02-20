@@ -107,9 +107,9 @@ const Dashboard = () => {
   if (loading) return <div className="container" style={{ paddingTop: '100px' }}>Loading...</div>;
 
   return (
-    <div className="container" style={{ paddingTop: '120px', paddingBottom: '100px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
-        <h1 style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '2rem' }}>
+    <div className="container" style={{ paddingTop: '100px', paddingBottom: '60px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', flexWrap: 'wrap', gap: '15px' }}>
+        <h1 style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: 'clamp(1.3rem, 4vw, 2rem)' }}>
           <LayoutDashboard className="primary-text" /> Admin Dashboard
         </h1>
         <div style={{ display: 'flex', gap: '15px' }}>
@@ -122,7 +122,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '24px' }}>
         {/* Stats Card */}
         <motion.div
           className="glass"
@@ -142,7 +142,7 @@ const Dashboard = () => {
             <p style={{ fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '15px' }}>Engagement Overview</p>
             <div style={{ maxHeight: '200px', overflowY: 'auto', pr: '10px' }}>
               {stats.detailedStats && stats.detailedStats.map(blog => (
-                <div key={blog.id} style={{ padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', marginBottom: '10px', border: '1px solid var(--glass-border)' }}>
+                <div key={blog._id} style={{ padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', marginBottom: '10px', border: '1px solid var(--glass-border)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                     <p style={{ fontSize: '0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{blog.title}</p>
                     <button

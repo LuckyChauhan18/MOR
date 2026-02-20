@@ -91,20 +91,20 @@ const UserDashboard = () => {
   );
 
   return (
-    <div className="container" style={{ paddingTop: '120px', paddingBottom: '100px' }}>
+    <div className="container" style={{ paddingTop: '100px', paddingBottom: '60px' }}>
       {/* Profile Header */}
-      <div className="glass" style={{ padding: '40px', marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="glass" style={{ padding: 'clamp(20px, 4vw, 40px)', marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'var(--vibrant-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <User size={40} color="white" />
+          <div style={{ width: 'clamp(50px, 10vw, 80px)', height: 'clamp(50px, 10vw, 80px)', borderRadius: '50%', background: 'var(--vibrant-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <User size={30} color="white" />
           </div>
           <div>
-            <h1 style={{ fontSize: '2.4rem', margin: 0 }}>{username}</h1>
+            <h1 style={{ fontSize: 'clamp(1.3rem, 4vw, 2.4rem)', margin: 0 }}>{username}</h1>
             <p style={{ color: 'var(--text-muted)', margin: '5px 0 0 0', textTransform: 'capitalize' }}>{role} Member</p>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '15px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button onClick={() => navigate('/')} style={{ background: 'var(--glass)', color: 'white', border: '1px solid var(--glass-border)', padding: '10px 20px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
             <Home size={18} /> Home
           </button>
