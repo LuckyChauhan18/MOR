@@ -77,6 +77,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate Deployment Secrets
+        run: |
+          if [ -z "${{ secrets.AWS_HOST || vars.AWS_HOST }}" ]; then
+            echo "Error: AWS_HOST is missing. Please check your GitHub Secrets/Variables."
+            exit 1
+          fi
+          if [ -z "${{ secrets.AWS_USER || vars.AWS_USER }}" ]; then
+            echo "Error: AWS_USER is missing. Please check your GitHub Secrets/Variables."
+            exit 1
+          fi
+          echo "Deployment secrets validated."
+
       - name: Execute SSH Deployment
         uses: appleboy/ssh-action@v1.0.3
         env:
